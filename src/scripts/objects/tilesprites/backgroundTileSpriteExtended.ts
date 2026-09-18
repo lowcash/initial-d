@@ -1,5 +1,5 @@
 import Map from '../map/map';
-import BackgroundTileSprite from './backgroundTilesprite'
+import BackgroundTileSprite from './backgroundTileSprite'
 
 /**
  * BackgrounTileSprite extended by map change handling and adjusting its speed
