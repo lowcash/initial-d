@@ -23,8 +23,14 @@ export default class PreloadMenu extends Phaser.Scene {
             }
         );
 
-        this.load.image(sourceModel.imageMuteOn.mappingKey, sourceModel.imageMuteOn.sourcePath);
-        this.load.image(sourceModel.imageMuteOff.mappingKey, sourceModel.imageMuteOff.sourcePath);
+        this.load.spritesheet(
+            sourceModel.spriteMute.mappingKey,
+            sourceModel.spriteMute.sourcePath,
+            {
+                frameWidth: 188,
+                frameHeight: 206
+            }
+        );
 
         this.load.audio(sourceModel.soundButton.mappingKey, sourceModel.soundButton.sourcePath);
 

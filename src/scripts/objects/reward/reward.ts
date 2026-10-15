@@ -256,6 +256,8 @@ export default class Reward implements IMovable {
         this.scene.events.emit('onScoreChanged', this.earnedPoints, points);
 
         const sprite = coinObject.getSprite();
+        // Drop from the scrolling group — collect tween carries road speed itself
+        // so the coin keeps drifting past the car instead of sticking.
         this.coins.group?.remove(sprite, false, false);
 
         // Remove from maps now so off-screen watcher won't double-spawn;
@@ -263,9 +265,9 @@ export default class Reward implements IMovable {
         delete this.coins.objectMapper[id];
         delete this.coins.spriteMapper[id];
 
-        // Same-beat FX + coin motion.
+        // Same-beat FX + coin keeps scrolling past the car.
         PickupFx.play(this.scene, pos.x, pos.y - 8, points);
-        coinObject.collectWithMotion(PickupFx.DURATION_MS, () => {
+        coinObject.collectWithMotion(PickupFx.DURATION_MS, this.speed, () => {
             this.spawnReplacementCoin();
         });
     }

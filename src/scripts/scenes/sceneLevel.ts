@@ -308,32 +308,34 @@ export default class SceneLevel extends Phaser.Scene {
       .setDepth(LayerIDX.GUI + 3)
       .setAlpha(0);
 
-    // Matching pixel buttons: AGAIN (retry same car) + MENU (car select).
-    const btnScale = 1.05;
+    // Matching pixel buttons: AGAIN (retry) + MENU (car select).
+    // Same hover language as START: yellow→red frame + slight scale-up.
+    const btnScale = 0.33;
+    const btnHoverScale = btnScale * 1.035; // subtle grow (shared with START)
+    const btnY = cy + 145;
+    const btnGap = 210;
+
     this.gameOver.againButton = new BasicButton(
       this,
-      new Phaser.Math.Vector2(cx - 115, cy + 130),
+      new Phaser.Math.Vector2(cx - btnGap / 2, btnY),
       sourceModel.spriteAgain.mappingKey,
       LayerIDX.GUI + 3,
       btnScale,
       undefined,
       sourceModel.soundButton.mappingKey
     );
-    this.gameOver.againButton.setAlpha(0);
-    // 2-frame sheets: 0 = yellow (primary), 1 = red (idle)
-    this.gameOver.againButton.setFrame(0);
+    this.prepareGameOverButton(this.gameOver.againButton, btnScale);
 
     this.gameOver.menuButton = new BasicButton(
       this,
-      new Phaser.Math.Vector2(cx + 115, cy + 130),
+      new Phaser.Math.Vector2(cx + btnGap / 2, btnY),
       sourceModel.spriteMenu.mappingKey,
       LayerIDX.GUI + 3,
       btnScale,
       undefined,
       sourceModel.soundButton.mappingKey
     );
-    this.gameOver.menuButton.setAlpha(0);
-    this.gameOver.menuButton.setFrame(1);
+    this.prepareGameOverButton(this.gameOver.menuButton, btnScale);
 
     this.tweens.add({
       targets: [
@@ -348,27 +350,47 @@ export default class SceneLevel extends Phaser.Scene {
     });
 
     this.time.delayedCall(280, () => {
-      this.wireGameOverButton(this.gameOver.againButton, btnScale, this.handleGameOverAgain);
-      this.wireGameOverButton(this.gameOver.menuButton, btnScale, this.handleGameOverMenu);
+      this.wireGameOverButton(this.gameOver.againButton, btnScale, btnHoverScale, this.handleGameOverAgain);
+      this.wireGameOverButton(this.gameOver.menuButton, btnScale, btnHoverScale, this.handleGameOverMenu);
     });
   }
 
-  private wireGameOverButton(button: BasicButton | undefined, baseScale: number, handler: () => void): void {
+  /** Origin + fixed hitbox so frame swaps cannot shift or reflow the button. */
+  private prepareGameOverButton(button: BasicButton, btnScale: number): void {
+    button.setOrigin(0.5, 0.5);
+    button.setAlpha(0);
+    button.setFrame(0, false, false);
+    button.setOrigin(0.5, 0.5);
+    // Fixed hit area in local texture space — ignores per-frame content width
+    button.setInteractive(
+      new Phaser.Geom.Rectangle(0, 0, button.width, button.height),
+      Phaser.Geom.Rectangle.Contains
+    );
+    button.setScale(btnScale);
+  }
+
+  private wireGameOverButton(
+    button: BasicButton | undefined,
+    idleScale: number,
+    hoverScale: number,
+    handler: () => void
+  ): void {
     if (!button) {
       return;
     }
 
-    const idleFrame = button === this.gameOver.againButton ? 0 : 1;
-
+    // Same as START: yellow idle → red hover + scale-up from center.
     button.on('pointerdown', handler, this);
     button.on('pointerover', () => {
-      button.setScale(baseScale * 1.08);
-      button.setFrame(0);
+      button.setFrame(1, false, false);
+      button.setOrigin(0.5, 0.5);
+      button.setScale(hoverScale);
       button.playSound();
     });
     button.on('pointerout', () => {
-      button.setScale(baseScale);
-      button.setFrame(idleFrame);
+      button.setFrame(0, false, false);
+      button.setOrigin(0.5, 0.5);
+      button.setScale(idleScale);
     });
   }
 

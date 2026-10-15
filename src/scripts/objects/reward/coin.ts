@@ -97,10 +97,11 @@ export default class Coin implements ICollidable {
     }
 
     /**
-     * Pop + fade with the same duration as PickupFx so coin and "+N" feel like one hit.
+     * Keep scrolling with the road (pass through the car) while fading out.
+     * `scrollSpeed` is the same per-frame delta Reward.move() uses via incX.
      * Call only after tryBeginCollect().
      */
-    public collectWithMotion(durationMs: number, onDone?: () => void): void {
+    public collectWithMotion(durationMs: number, scrollSpeed: number, onDone?: () => void): void {
         if (!this.isCollecting) {
             return;
         }
@@ -112,13 +113,16 @@ export default class Coin implements ICollidable {
             this.scene.physics.world.disable(this.sprite);
         }
 
+        // Approximate remaining scroll over the FX window (~60fps ticks).
+        const travelX = scrollSpeed * (durationMs / (1000 / 60));
+
         this.scene.tweens.add({
             targets: this.sprite,
-            y: this.sprite.y - 36,
-            scale: 1.55,
+            x: this.sprite.x + travelX,
+            scale: this.sprite.scale * 1.2,
             alpha: 0,
             duration: durationMs,
-            ease: 'Back.easeIn',
+            ease: 'Linear',
             onComplete: () => {
                 if (this.sprite && this.sprite.active) {
                     this.sprite.destroy();

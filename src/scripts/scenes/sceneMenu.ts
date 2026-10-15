@@ -64,11 +64,11 @@ export default class SceneMenu extends Phaser.Scene {
 
   /** Title banner → vehicle grid → Start (tight under the grid). */
   private readonly layout = {
-    heroY: 0.10,
-    vehiclesY: 0.26,
-    titleScale: 1.35,
+    heroY: 0.22,
+    vehiclesY: 0.37,
+    titleScale: 0.72,
     startScale: 1.15,
-    startActionScale: 1.22,
+    startActionScale: 1.15 * 1.035, // same subtle grow as AGAIN / MENU
     startGapBelowPanel: 22,
   };
 
@@ -108,7 +108,7 @@ export default class SceneMenu extends Phaser.Scene {
 
       text: 'Select vehicle',
       textPadding: 14,
-      fontSize: 28,
+      fontSize: 38,
       color: 0x333333,
       alpha: 0.65,
 
@@ -300,7 +300,6 @@ export default class SceneMenu extends Phaser.Scene {
   }
 
   private prepareHero(): void {
-    // Same UI family as GAME OVER / START — cohesive title, not a fake series logo.
     this.logo = this.add.image(
       this.cameras.main.width * 0.5,
       this.cameras.main.height * this.layout.heroY,

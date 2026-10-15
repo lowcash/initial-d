@@ -12,14 +12,12 @@ class SourceModel {
     imageHill: SourceMapping;
     imageClouds: SourceMapping;
     imageForest: SourceMapping;
-    spriteArrowsSelect: SourceMapping;
     spriteArrowsPlay: SourceMapping;
     spriteStart: SourceMapping;
     spriteAgain: SourceMapping;
     spriteMenu: SourceMapping;
     imageGameOver: SourceMapping;
-    imageMuteOn: SourceMapping;
-    imageMuteOff: SourceMapping;
+    spriteMute: SourceMapping;
     soundButton: SourceMapping;
     soundBgm: SourceMapping;
     imageRoadStraight0: SourceMapping;
@@ -57,10 +55,6 @@ export const sourceModel: SourceModel = {
         mappingKey: 'image_forest',
         sourcePath: 'assets/img/background/forest.png'
     },
-    spriteArrowsSelect: {
-        mappingKey: 'sprite_arrows_select',
-        sourcePath: 'assets/img/buttons/arrows_select.png'
-    },
     spriteArrowsPlay: {
         mappingKey: 'sprite_arrows_play',
         sourcePath: 'assets/img/buttons/arrows_play.png'
@@ -81,13 +75,10 @@ export const sourceModel: SourceModel = {
         mappingKey: 'image_game_over',
         sourcePath: 'assets/img/buttons/game_over.png'
     },
-    imageMuteOn: {
-        mappingKey: 'image_mute_on',
-        sourcePath: 'assets/img/buttons/mute_on.png'
-    },
-    imageMuteOff: {
-        mappingKey: 'image_mute_off',
-        sourcePath: 'assets/img/buttons/mute_off.png'
+    spriteMute: {
+        // 2-frame sheet (188×206 each, equalized + centered): 0 = sound on, 1 = muted
+        mappingKey: 'sprite_sheet_mute',
+        sourcePath: 'assets/img/buttons/sound.png'
     },
     soundButton: {
         mappingKey: 'sound_button',
