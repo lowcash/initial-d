@@ -70,6 +70,8 @@ export default class SceneLevel extends Phaser.Scene {
     downButton: BasicButtonMapping;
 
     screenOffsetMult?: Phaser.Math.Vector2;
+    /** Keep arrows small and in the corner so they don't cover the road. */
+    scale: number;
 
     group?: Phaser.GameObjects.Group;
   } = {
@@ -86,7 +88,9 @@ export default class SceneLevel extends Phaser.Scene {
         depth: LayerIDX.GUI
       },
 
-      screenOffsetMult: new Phaser.Math.Vector2(0.88, 0.72)
+      // Far right / lower — less overlap with the driving lane.
+      screenOffsetMult: new Phaser.Math.Vector2(0.94, 0.86),
+      scale: 0.62
     };
 
   private readonly gameOver: {
@@ -283,8 +287,29 @@ export default class SceneLevel extends Phaser.Scene {
       // Freeze the whole playfield: cars already stopped; coins must stop spinning too.
       this.reward.object?.freeze();
 
+      this.setMobileControlsVisible(false);
+
       this.showGameOverOverlay(earnedPoints);
     }
+  }
+
+  private setMobileControlsVisible(visible: boolean): void {
+    const buttons = [this.controls.upButton.button, this.controls.downButton.button];
+
+    for (const button of buttons) {
+      if (!button) {
+        continue;
+      }
+
+      button.setVisible(visible);
+      if (visible) {
+        button.setInteractive();
+      } else {
+        button.disableInteractive();
+      }
+    }
+
+    this.controls.group?.setVisible(visible);
   }
 
   private showGameOverOverlay(earnedPoints: number): void {
@@ -433,23 +458,24 @@ export default class SceneLevel extends Phaser.Scene {
       const arrowTex = this.textures.get(sourceModel.spriteArrowsPlay.mappingKey);
 
       const arrowWidth = arrowTex.getSourceImage().width / arrowTex.frameTotal;
+      const gap = arrowWidth * this.controls.scale * 0.55;
 
       this.controls.upButton.button = new BasicButton(
         this,
-        new Phaser.Math.Vector2(0, -arrowWidth),
+        new Phaser.Math.Vector2(0, -gap),
         sourceModel.spriteArrowsPlay.mappingKey,
         this.controls.upButton.depth,
-        undefined,
+        this.controls.scale,
         90,
         sourceModel.soundButton.mappingKey
       );
 
       this.controls.downButton.button = new BasicButton(
         this,
-        new Phaser.Math.Vector2(0, arrowWidth),
+        new Phaser.Math.Vector2(0, gap),
         sourceModel.spriteArrowsPlay.mappingKey,
         this.controls.downButton.depth,
-        undefined,
+        this.controls.scale,
         -90,
         sourceModel.soundButton.mappingKey
       );
@@ -473,6 +499,8 @@ export default class SceneLevel extends Phaser.Scene {
       this.controls.upButton.button?.on('pointerup', this.handleUnPressedUpControlButton, this);
       this.controls.downButton.button?.on('pointerup', this.handleUnPressedDownControlButton, this);
     }
+
+    this.setMobileControlsVisible(true);
   }
 
   private prepareReward(): void {

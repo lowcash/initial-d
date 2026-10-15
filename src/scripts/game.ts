@@ -3,13 +3,14 @@ import PreloadMenu from './scenes/preloadMenu'
 import SceneMenu from './scenes/sceneMenu'
 import PreloadLevel from './scenes/preloadLevel'
 import SceneLevel from './scenes/sceneLevel'
+import FullscreenHelper from './objects/_common/fullscreenHelper'
 
 const DEFAULT_WIDTH = 1280
 const DEFAULT_HEIGHT = 800
 
 const config: Phaser.Types.Core.GameConfig = {
   type: Phaser.AUTO,
-  backgroundColor: '#ffffff',
+  backgroundColor: '#000000',
   scale: {
     parent: 'initial-d-game',
     mode: Phaser.Scale.FIT,
@@ -26,5 +27,7 @@ const config: Phaser.Types.Core.GameConfig = {
     }
   }
 }
+
+FullscreenHelper.armOnFirstGesture()
 
 export default new Phaser.Game(config)
