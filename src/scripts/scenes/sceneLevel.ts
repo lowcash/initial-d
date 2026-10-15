@@ -15,7 +15,6 @@ import Common, { LayerIDX } from '../objects/_common/common';
 import AudioHelper from '../objects/_common/audioHelper';
 import ScoreStorage from '../objects/_common/scoreStorage';
 import BackgroundTileSpriteExtended from '../objects/tilesprites/backgroundTileSpriteExtended';
-import { MOBILE_GUTTER_RATIO } from './mobileControlsScene';
 
 export default class SceneLevel extends Phaser.Scene {
   private readonly city: BackgroundTileSpriteMapping = {
@@ -65,9 +64,6 @@ export default class SceneLevel extends Phaser.Scene {
     origin: new Phaser.Math.Vector2(0.5, 1.0),
     depth: 7
   };
-
-  /** Mobile: playfield is inset; lane rails live in MobileControls overlay scene. */
-  private mobilePlayfieldActive = false;
 
   private readonly gameOver: {
     image?: Phaser.GameObjects.Image;
@@ -175,7 +171,7 @@ export default class SceneLevel extends Phaser.Scene {
     this.reward.object = undefined;
     this.reward.scoreHUD = undefined;
     this.reward.highScoreHUD = undefined;
-    this.teardownMobilePlayfield();
+    this.teardownMobileControls();
     this.gameOver.image = undefined;
     this.gameOver.score = undefined;
     this.gameOver.againButton = undefined;
@@ -192,20 +188,20 @@ export default class SceneLevel extends Phaser.Scene {
       this.handlePlayerCollided(id);
     });
 
-    this.events.once('shutdown', this.teardownMobilePlayfield, this);
+    this.events.once('shutdown', this.teardownMobileControls, this);
   }
 
   private prepareObjects(): void {
     this.isGameOver = false;
 
-    if (this.menuSettings.deviceType === DeviceType.MOBILE) {
-      this.setupMobilePlayfield();
-    }
-
     this.prepareBackground();
     this.prepareMap();
     this.prepareTraffic();
     this.prepareReward();
+
+    if (this.menuSettings.deviceType === DeviceType.MOBILE) {
+      this.setupMobileControls();
+    }
 
     this.traffic.player?.setEnableTurn(true);
 
@@ -269,16 +265,9 @@ export default class SceneLevel extends Phaser.Scene {
     }
   }
 
-  /** Shrink the playfield into the center; lane rails render in the side gutters. */
-  private setupMobilePlayfield(): void {
-    this.teardownMobilePlayfield();
-
-    const w = this.scale.width;
-    const h = this.scale.height;
-    const gutter = Math.round(w * MOBILE_GUTTER_RATIO);
-
-    this.cameras.main.setViewport(gutter, 0, w - gutter * 2, h);
-    this.mobilePlayfieldActive = true;
+  /** Top/bottom tap rails via overlay — full FOV, lanes map to up/down. */
+  private setupMobileControls(): void {
+    this.teardownMobileControls();
 
     this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
     this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this);
@@ -293,18 +282,13 @@ export default class SceneLevel extends Phaser.Scene {
     }
   }
 
-  private teardownMobilePlayfield = (): void => {
+  private teardownMobileControls = (): void => {
     this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
     this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this);
     this.game.events.emit('mobileControlsEnabled', false);
 
     if (this.scene.isActive('MobileControls') || this.scene.isSleeping('MobileControls')) {
       this.scene.stop('MobileControls');
-    }
-
-    if (this.mobilePlayfieldActive) {
-      this.cameras.main.setViewport(0, 0, this.scale.width, this.scale.height);
-      this.mobilePlayfieldActive = false;
     }
   };
 
