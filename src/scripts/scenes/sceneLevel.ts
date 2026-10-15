@@ -1,5 +1,5 @@
 import { sourceModel } from '../models/source'
-import { ControlState, DeviceType, SettingsModel } from '../models/settings'
+import { DeviceType, SettingsModel } from '../models/settings'
 
 import BasicButton from '../objects/buttons/basicButton';
 import MuteButton from '../objects/buttons/muteButton';
@@ -15,6 +15,7 @@ import Common, { LayerIDX } from '../objects/_common/common';
 import AudioHelper from '../objects/_common/audioHelper';
 import ScoreStorage from '../objects/_common/scoreStorage';
 import BackgroundTileSpriteExtended from '../objects/tilesprites/backgroundTileSpriteExtended';
+import { MOBILE_GUTTER_RATIO } from './mobileControlsScene';
 
 export default class SceneLevel extends Phaser.Scene {
   private readonly city: BackgroundTileSpriteMapping = {
@@ -65,29 +66,8 @@ export default class SceneLevel extends Phaser.Scene {
     depth: 7
   };
 
-  /**
-   * Mobile lane buttons — semi-transparent edge glyphs.
-   * Visual sits in the upper third (city band) so the road stays readable;
-   * hit area is padded larger than the sprite for easier taps.
-   */
-  private readonly mobileControls: {
-    enabled: boolean;
-    scale: number;
-    alpha: number;
-    pressAlpha: number;
-    /** Screen Y of the glyphs (~city mid / first third). */
-    yRatio: number;
-    hitPad: number;
-    upButton?: BasicButton;
-    downButton?: BasicButton;
-  } = {
-      enabled: false,
-      scale: 1.6,
-      alpha: 0.45,
-      pressAlpha: 0.85,
-      yRatio: 0.34,
-      hitPad: 32
-    };
+  /** Mobile: playfield is inset; lane rails live in MobileControls overlay scene. */
+  private mobilePlayfieldActive = false;
 
   private readonly gameOver: {
     image?: Phaser.GameObjects.Image;
@@ -195,7 +175,7 @@ export default class SceneLevel extends Phaser.Scene {
     this.reward.object = undefined;
     this.reward.scoreHUD = undefined;
     this.reward.highScoreHUD = undefined;
-    this.teardownMobileControls();
+    this.teardownMobilePlayfield();
     this.gameOver.image = undefined;
     this.gameOver.score = undefined;
     this.gameOver.againButton = undefined;
@@ -211,19 +191,21 @@ export default class SceneLevel extends Phaser.Scene {
     this.events.on('onPlayerCollided', (id: string) => {
       this.handlePlayerCollided(id);
     });
+
+    this.events.once('shutdown', this.teardownMobilePlayfield, this);
   }
 
   private prepareObjects(): void {
     this.isGameOver = false;
 
+    if (this.menuSettings.deviceType === DeviceType.MOBILE) {
+      this.setupMobilePlayfield();
+    }
+
     this.prepareBackground();
     this.prepareMap();
     this.prepareTraffic();
     this.prepareReward();
-
-    if (this.menuSettings.deviceType === DeviceType.MOBILE) {
-      this.prepareMobileControls();
-    }
 
     this.traffic.player?.setEnableTurn(true);
 
@@ -281,44 +263,66 @@ export default class SceneLevel extends Phaser.Scene {
       // Freeze the whole playfield: cars already stopped; coins must stop spinning too.
       this.reward.object?.freeze();
 
-      this.setMobileControlsEnabled(false);
+      this.game.events.emit('mobileControlsEnabled', false);
 
       this.showGameOverOverlay(earnedPoints);
     }
   }
 
-  private setMobileControlsEnabled(enabled: boolean): void {
-    this.mobileControls.enabled = enabled;
+  /** Shrink the playfield into the center; lane rails render in the side gutters. */
+  private setupMobilePlayfield(): void {
+    this.teardownMobilePlayfield();
 
-    for (const button of [this.mobileControls.upButton, this.mobileControls.downButton]) {
-      if (!button) {
-        continue;
-      }
+    const w = this.scale.width;
+    const h = this.scale.height;
+    const gutter = Math.round(w * MOBILE_GUTTER_RATIO);
 
-      button.setVisible(enabled);
-      if (enabled) {
-        this.applyMobileHitArea(button);
-      } else {
-        button.disableInteractive();
-      }
+    this.cameras.main.setViewport(gutter, 0, w - gutter * 2, h);
+    this.mobilePlayfieldActive = true;
+
+    this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
+    this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this);
+    this.game.events.on('mobileLaneUp', this.handleMobileLaneUp, this);
+    this.game.events.on('mobileLaneDown', this.handleMobileLaneDown, this);
+
+    if (this.scene.isActive('MobileControls') || this.scene.isSleeping('MobileControls')) {
+      this.scene.wake('MobileControls');
+      this.game.events.emit('mobileControlsEnabled', true);
+    } else {
+      this.scene.launch('MobileControls');
     }
   }
 
-  private teardownMobileControls(): void {
-    this.mobileControls.upButton?.destroy();
-    this.mobileControls.downButton?.destroy();
-    this.mobileControls.upButton = undefined;
-    this.mobileControls.downButton = undefined;
-    this.mobileControls.enabled = false;
-  }
+  private teardownMobilePlayfield = (): void => {
+    this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
+    this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this);
+    this.game.events.emit('mobileControlsEnabled', false);
 
-  private applyMobileHitArea(button: BasicButton): void {
-    const pad = this.mobileControls.hitPad;
-    button.setInteractive(
-      new Phaser.Geom.Rectangle(-pad, -pad, button.width + pad * 2, button.height + pad * 2),
-      Phaser.Geom.Rectangle.Contains
-    );
-  }
+    if (this.scene.isActive('MobileControls') || this.scene.isSleeping('MobileControls')) {
+      this.scene.stop('MobileControls');
+    }
+
+    if (this.mobilePlayfieldActive) {
+      this.cameras.main.setViewport(0, 0, this.scale.width, this.scale.height);
+      this.mobilePlayfieldActive = false;
+    }
+  };
+
+  private handleMobileLaneUp = (): void => {
+    if (this.isGameOver) {
+      return;
+    }
+
+    this.traffic.player?.turnLeft();
+  };
+
+  private handleMobileLaneDown = (): void => {
+    if (this.isGameOver) {
+      return;
+    }
+
+    this.traffic.player?.turnRight();
+  };
 
   private showGameOverOverlay(earnedPoints: number): void {
     const cx = this.cameras.main.width * this.gameOver.screenOffsetMult.x;
@@ -435,68 +439,6 @@ export default class SceneLevel extends Phaser.Scene {
     this.scene.start('SceneMenu');
   }
 
-  //#region Mobile controls
-  private prepareMobileControls(): void {
-    this.teardownMobileControls();
-
-    const w = this.cameras.main.width;
-    const h = this.cameras.main.height;
-    const scale = this.mobileControls.scale;
-    const y = h * this.mobileControls.yRatio;
-    const depth = LayerIDX.GUI;
-
-    // Left = upper lane, right = lower lane — edge-only, translucent over the city band.
-    this.mobileControls.upButton = new BasicButton(
-      this,
-      new Phaser.Math.Vector2(w * 0.07, y),
-      sourceModel.spriteArrowsPlay.mappingKey,
-      depth,
-      scale,
-      90,
-      sourceModel.soundButton.mappingKey
-    );
-
-    this.mobileControls.downButton = new BasicButton(
-      this,
-      new Phaser.Math.Vector2(w * 0.93, y),
-      sourceModel.spriteArrowsPlay.mappingKey,
-      depth,
-      scale,
-      -90,
-      sourceModel.soundButton.mappingKey
-    );
-
-    this.wireMobileLaneButton(this.mobileControls.upButton, () => this.traffic.player?.turnLeft());
-    this.wireMobileLaneButton(this.mobileControls.downButton, () => this.traffic.player?.turnRight());
-
-    this.setMobileControlsEnabled(true);
-  }
-
-  private wireMobileLaneButton(button: BasicButton, onTurn: () => void): void {
-    button.setFrame(ControlState.PENDING);
-    button.setAlpha(this.mobileControls.alpha);
-    this.applyMobileHitArea(button);
-
-    button.on('pointerdown', () => {
-      if (!this.mobileControls.enabled || this.isGameOver) {
-        return;
-      }
-
-      onTurn();
-      button.setFrame(ControlState.SELECTED);
-      button.setAlpha(this.mobileControls.pressAlpha);
-      button.playSound();
-    });
-
-    const release = () => {
-      button.setFrame(ControlState.PENDING);
-      button.setAlpha(this.mobileControls.alpha);
-    };
-    button.on('pointerup', release);
-    button.on('pointerupoutside', release);
-    button.on('pointerout', release);
-  }
-  //#endregion
   //#region Prepares
 
   private prepareReward(): void {

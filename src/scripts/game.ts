@@ -3,6 +3,7 @@ import PreloadMenu from './scenes/preloadMenu'
 import SceneMenu from './scenes/sceneMenu'
 import PreloadLevel from './scenes/preloadLevel'
 import SceneLevel from './scenes/sceneLevel'
+import MobileControlsScene from './scenes/mobileControlsScene'
 import FullscreenHelper from './objects/_common/fullscreenHelper'
 
 const DEFAULT_WIDTH = 1280
@@ -18,7 +19,7 @@ const config: Phaser.Types.Core.GameConfig = {
     width: DEFAULT_WIDTH,
     height: DEFAULT_HEIGHT
   },
-  scene: [PreloadMenu, SceneMenu, PreloadLevel, SceneLevel],
+  scene: [PreloadMenu, SceneMenu, PreloadLevel, SceneLevel, MobileControlsScene],
   physics: {
     default: 'arcade',
     arcade: {
