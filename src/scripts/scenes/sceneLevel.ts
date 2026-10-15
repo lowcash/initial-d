@@ -65,32 +65,34 @@ export default class SceneLevel extends Phaser.Scene {
     depth: 7
   };
 
+  /**
+   * Mobile-only lane controls — landscape thumb layout:
+   * up/left lane on the left, down/right lane on the right, large hit targets.
+   */
   private readonly controls: {
     upButton: BasicButtonMapping;
     downButton: BasicButtonMapping;
-
-    screenOffsetMult?: Phaser.Math.Vector2;
-    /** Keep arrows small and in the corner so they don't cover the road. */
     scale: number;
-
+    /** Extra padding around the sprite for fat-finger hits (texture pixels). */
+    hitPad: number;
     group?: Phaser.GameObjects.Group;
   } = {
       upButton: {
         mappingKey: sourceModel.spriteArrowsPlay.mappingKey,
-        standartScale: 1.0,
-        actionScale: 1.15,
+        screenOffsetMult: new Phaser.Math.Vector2(0.11, 0.78),
+        standartScale: 1.45,
+        actionScale: 1.55,
         depth: LayerIDX.GUI
       },
       downButton: {
         mappingKey: sourceModel.spriteArrowsPlay.mappingKey,
-        standartScale: 1.0,
-        actionScale: 1.15,
+        screenOffsetMult: new Phaser.Math.Vector2(0.89, 0.78),
+        standartScale: 1.45,
+        actionScale: 1.55,
         depth: LayerIDX.GUI
       },
-
-      // Far right / lower — less overlap with the driving lane.
-      screenOffsetMult: new Phaser.Math.Vector2(0.94, 0.86),
-      scale: 0.62
+      scale: 1.45,
+      hitPad: 28
     };
 
   private readonly gameOver: {
@@ -295,6 +297,7 @@ export default class SceneLevel extends Phaser.Scene {
 
   private setMobileControlsVisible(visible: boolean): void {
     const buttons = [this.controls.upButton.button, this.controls.downButton.button];
+    const pad = this.controls.hitPad;
 
     for (const button of buttons) {
       if (!button) {
@@ -303,7 +306,10 @@ export default class SceneLevel extends Phaser.Scene {
 
       button.setVisible(visible);
       if (visible) {
-        button.setInteractive();
+        button.setInteractive(
+          new Phaser.Geom.Rectangle(-pad, -pad, button.width + pad * 2, button.height + pad * 2),
+          Phaser.Geom.Rectangle.Contains
+        );
       } else {
         button.disableInteractive();
       }
@@ -455,52 +461,72 @@ export default class SceneLevel extends Phaser.Scene {
   //#region Prepares
   private prepareControls(): void {
     if (!(this.controls.upButton.button && this.controls.downButton.button)) {
-      const arrowTex = this.textures.get(sourceModel.spriteArrowsPlay.mappingKey);
-
-      const arrowWidth = arrowTex.getSourceImage().width / arrowTex.frameTotal;
-      const gap = arrowWidth * this.controls.scale * 0.55;
+      const w = this.cameras.main.width;
+      const h = this.cameras.main.height;
+      const scale = this.controls.scale;
 
       this.controls.upButton.button = new BasicButton(
         this,
-        new Phaser.Math.Vector2(0, -gap),
+        new Phaser.Math.Vector2(
+          w * (this.controls.upButton.screenOffsetMult?.x ?? 0.11),
+          h * (this.controls.upButton.screenOffsetMult?.y ?? 0.78)
+        ),
         sourceModel.spriteArrowsPlay.mappingKey,
         this.controls.upButton.depth,
-        this.controls.scale,
+        scale,
         90,
         sourceModel.soundButton.mappingKey
       );
 
       this.controls.downButton.button = new BasicButton(
         this,
-        new Phaser.Math.Vector2(0, gap),
+        new Phaser.Math.Vector2(
+          w * (this.controls.downButton.screenOffsetMult?.x ?? 0.89),
+          h * (this.controls.downButton.screenOffsetMult?.y ?? 0.78)
+        ),
         sourceModel.spriteArrowsPlay.mappingKey,
         this.controls.downButton.depth,
-        this.controls.scale,
+        scale,
         -90,
         sourceModel.soundButton.mappingKey
       );
 
       this.controls.group = this.add.group();
+      this.controls.group.add(this.controls.upButton.button);
+      this.controls.group.add(this.controls.downButton.button);
 
-      this.controls.group?.add(this.controls.upButton.button);
-      this.controls.group?.add(this.controls.downButton.button);
-
-      this.controls.group?.incXY(
-        this.cameras.main.width * this.controls.screenOffsetMult!.x ?? 1,
-        this.cameras.main.height * this.controls.screenOffsetMult!.y ?? 1
+      this.wireMobileControl(
+        this.controls.upButton.button,
+        this.handlePressedUpControlButton,
+        this.handleUnPressedUpControlButton
       );
-
-      this.controls.upButton.button?.setFrame(ControlState.PENDING);
-      this.controls.downButton.button?.setFrame(ControlState.PENDING);
-
-      this.controls.upButton.button?.on('pointerdown', this.handlePressedUpControlButton, this);
-      this.controls.downButton.button?.on('pointerdown', this.handlePressedDownControlButton, this);
-
-      this.controls.upButton.button?.on('pointerup', this.handleUnPressedUpControlButton, this);
-      this.controls.downButton.button?.on('pointerup', this.handleUnPressedDownControlButton, this);
+      this.wireMobileControl(
+        this.controls.downButton.button,
+        this.handlePressedDownControlButton,
+        this.handleUnPressedDownControlButton
+      );
     }
 
     this.setMobileControlsVisible(true);
+  }
+
+  /** Fat-finger hit area + press/release wiring for one lane arrow. */
+  private wireMobileControl(
+    button: BasicButton,
+    onDown: (context: any) => void,
+    onUp: (context: any) => void
+  ): void {
+    const pad = this.controls.hitPad;
+    button.setFrame(ControlState.PENDING);
+    button.setInteractive(
+      new Phaser.Geom.Rectangle(-pad, -pad, button.width + pad * 2, button.height + pad * 2),
+      Phaser.Geom.Rectangle.Contains
+    );
+    // Keep presses working if the finger slides off the glyph a bit.
+    button.on('pointerdown', onDown, this);
+    button.on('pointerup', onUp, this);
+    button.on('pointerupoutside', onUp, this);
+    button.on('pointerout', onUp, this);
   }
 
   private prepareReward(): void {
