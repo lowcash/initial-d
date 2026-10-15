@@ -65,17 +65,28 @@ export default class SceneLevel extends Phaser.Scene {
     depth: 7
   };
 
-  /** Mobile lane buttons on the screen edges — no swipe, center stays clear. */
+  /**
+   * Mobile lane buttons — semi-transparent edge glyphs.
+   * Visual sits in the upper third (city band) so the road stays readable;
+   * hit area is padded larger than the sprite for easier taps.
+   */
   private readonly mobileControls: {
     enabled: boolean;
     scale: number;
+    alpha: number;
+    pressAlpha: number;
+    /** Screen Y of the glyphs (~city mid / first third). */
+    yRatio: number;
     hitPad: number;
     upButton?: BasicButton;
     downButton?: BasicButton;
   } = {
       enabled: false,
-      scale: 1.35,
-      hitPad: 24
+      scale: 1.6,
+      alpha: 0.45,
+      pressAlpha: 0.85,
+      yRatio: 0.34,
+      hitPad: 32
     };
 
   private readonly gameOver: {
@@ -431,12 +442,13 @@ export default class SceneLevel extends Phaser.Scene {
     const w = this.cameras.main.width;
     const h = this.cameras.main.height;
     const scale = this.mobileControls.scale;
+    const y = h * this.mobileControls.yRatio;
     const depth = LayerIDX.GUI;
 
-    // Left = upper lane, right = lower lane — clear buttons on the edges only.
+    // Left = upper lane, right = lower lane — edge-only, translucent over the city band.
     this.mobileControls.upButton = new BasicButton(
       this,
-      new Phaser.Math.Vector2(w * 0.08, h * 0.58),
+      new Phaser.Math.Vector2(w * 0.07, y),
       sourceModel.spriteArrowsPlay.mappingKey,
       depth,
       scale,
@@ -446,7 +458,7 @@ export default class SceneLevel extends Phaser.Scene {
 
     this.mobileControls.downButton = new BasicButton(
       this,
-      new Phaser.Math.Vector2(w * 0.92, h * 0.58),
+      new Phaser.Math.Vector2(w * 0.93, y),
       sourceModel.spriteArrowsPlay.mappingKey,
       depth,
       scale,
@@ -462,6 +474,7 @@ export default class SceneLevel extends Phaser.Scene {
 
   private wireMobileLaneButton(button: BasicButton, onTurn: () => void): void {
     button.setFrame(ControlState.PENDING);
+    button.setAlpha(this.mobileControls.alpha);
     this.applyMobileHitArea(button);
 
     button.on('pointerdown', () => {
@@ -471,10 +484,14 @@ export default class SceneLevel extends Phaser.Scene {
 
       onTurn();
       button.setFrame(ControlState.SELECTED);
+      button.setAlpha(this.mobileControls.pressAlpha);
       button.playSound();
     });
 
-    const release = () => button.setFrame(ControlState.PENDING);
+    const release = () => {
+      button.setFrame(ControlState.PENDING);
+      button.setAlpha(this.mobileControls.alpha);
+    };
     button.on('pointerup', release);
     button.on('pointerupoutside', release);
     button.on('pointerout', release);
