@@ -38,19 +38,31 @@ export default class PreloadLevel extends Phaser.Scene {
         frameHeight: 69
       }
     );
-    
+
     this.load.spritesheet(
-      sourceModel.spriteStart.mappingKey,
-      sourceModel.spriteStart.sourcePath,
+      sourceModel.spriteAgain.mappingKey,
+      sourceModel.spriteAgain.sourcePath,
       {
-          frameWidth: 191,
-          frameHeight: 69
+        frameWidth: 191,
+        frameHeight: 69
       }
-  );
+    );
+
+    this.load.spritesheet(
+      sourceModel.spriteMenu.mappingKey,
+      sourceModel.spriteMenu.sourcePath,
+      {
+        frameWidth: 191,
+        frameHeight: 69
+      }
+    );
 
     this.load.image(sourceModel.imageGameOver.mappingKey, sourceModel.imageGameOver.sourcePath);
+    this.load.image(sourceModel.imageMuteOn.mappingKey, sourceModel.imageMuteOn.sourcePath);
+    this.load.image(sourceModel.imageMuteOff.mappingKey, sourceModel.imageMuteOff.sourcePath);
 
     this.load.audio(sourceModel.soundButton.mappingKey, sourceModel.soundButton.sourcePath);
+    this.load.audio(sourceModel.soundBgm.mappingKey, sourceModel.soundBgm.sourcePath);
 
     this.load.image(sourceModel.imageRoadStraight0.mappingKey, sourceModel.imageRoadStraight0.sourcePath);
     this.load.image(sourceModel.imageRoadStraight1.mappingKey, sourceModel.imageRoadStraight1.sourcePath);

@@ -15,8 +15,13 @@ class SourceModel {
     spriteArrowsSelect: SourceMapping;
     spriteArrowsPlay: SourceMapping;
     spriteStart: SourceMapping;
+    spriteAgain: SourceMapping;
+    spriteMenu: SourceMapping;
     imageGameOver: SourceMapping;
+    imageMuteOn: SourceMapping;
+    imageMuteOff: SourceMapping;
     soundButton: SourceMapping;
+    soundBgm: SourceMapping;
     imageRoadStraight0: SourceMapping;
     imageRoadStraight1: SourceMapping;
     atlasVehicle: SourceMapping;
@@ -64,13 +69,35 @@ export const sourceModel: SourceModel = {
         mappingKey: 'sprite_sheet_start',
         sourcePath: 'assets/img/buttons/start.png'
     },
+    spriteAgain: {
+        mappingKey: 'sprite_sheet_again',
+        sourcePath: 'assets/img/buttons/again.png'
+    },
+    spriteMenu: {
+        mappingKey: 'sprite_sheet_menu',
+        sourcePath: 'assets/img/buttons/menu.png'
+    },
     imageGameOver: {
         mappingKey: 'image_game_over',
         sourcePath: 'assets/img/buttons/game_over.png'
     },
+    imageMuteOn: {
+        mappingKey: 'image_mute_on',
+        sourcePath: 'assets/img/buttons/mute_on.png'
+    },
+    imageMuteOff: {
+        mappingKey: 'image_mute_off',
+        sourcePath: 'assets/img/buttons/mute_off.png'
+    },
     soundButton: {
         mappingKey: 'sound_button',
         sourcePath: 'assets/sound/button.wav'
+    },
+    soundBgm: {
+        // CC0 eurobeat climax loop (Fever Stadium Climax BPM180 by MintoDog / OpenGameArt).
+        // Not the copyrighted Initial D soundtrack — closest legal eurobeat energy we can ship.
+        mappingKey: 'sound_bgm',
+        sourcePath: 'assets/sound/bgm.ogg'
     },
     imageRoadStraight0: {
         mappingKey: 'image_road_straight_0',

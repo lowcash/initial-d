@@ -15,15 +15,6 @@ export default class PreloadMenu extends Phaser.Scene {
         this.load.image(sourceModel.imageClouds.mappingKey, sourceModel.imageClouds.sourcePath);
 
         this.load.spritesheet(
-            sourceModel.spriteArrowsSelect.mappingKey,
-            sourceModel.spriteArrowsSelect.sourcePath,
-            {
-                frameWidth: 190,
-                frameHeight: 76
-            }
-        );
-
-        this.load.spritesheet(
             sourceModel.spriteStart.mappingKey,
             sourceModel.spriteStart.sourcePath,
             {
@@ -31,6 +22,9 @@ export default class PreloadMenu extends Phaser.Scene {
                 frameHeight: 69
             }
         );
+
+        this.load.image(sourceModel.imageMuteOn.mappingKey, sourceModel.imageMuteOn.sourcePath);
+        this.load.image(sourceModel.imageMuteOff.mappingKey, sourceModel.imageMuteOff.sourcePath);
 
         this.load.audio(sourceModel.soundButton.mappingKey, sourceModel.soundButton.sourcePath);
 

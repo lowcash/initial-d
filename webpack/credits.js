@@ -18,3 +18,7 @@ console.log(
   'color: #fff; background: #000000;',
   'background: none'
 )
+
+console.log(
+  'BGM: Fever Stadium Climax BPM180 (CC0) by MintoDog — https://opengameart.org/content/fever-stadium'
+)

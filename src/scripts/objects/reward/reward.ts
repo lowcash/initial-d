@@ -3,6 +3,7 @@ import TypeGuardHelper from '../_common/typeGuardHelper';
 import { SpriteMappingSized } from '../_common/mappingHelper';
 
 import Coin from './coin'
+import PickupFx from './pickupFx'
 import Map from '../map/map'
 import Vehicle from '../traffic/vehicle';
 
@@ -44,6 +45,15 @@ export default class Reward implements IMovable {
 
     private earnedPoints: number = 0;
 
+    /** Fractional carry for distance-based score while driving. */
+    private driveScoreCarry: number = 0;
+
+    private frozen: boolean = false;
+
+    private readonly onCoinCollidedHandler: (id: string) => void;
+    private readonly onCoinDestroyedHandler: (id: string) => void;
+    private readonly onMapSpeedChangedHandler: (speed: number) => void;
+
     speed: number = 0;
 
     constructor(scene: Phaser.Scene, map: Map, player: Vehicle, depthLayer: number = 0, numCoinsToGenerate: number) {
@@ -53,33 +63,73 @@ export default class Reward implements IMovable {
 
         this.depthLayer = depthLayer;
 
+        this.onCoinCollidedHandler = (id: string) => this.handleCoinCollided(id);
+        this.onCoinDestroyedHandler = (id: string) => this.handleCoinDestroyed(id);
+        this.onMapSpeedChangedHandler = (speed: number) => this.handleMapSpeedChanged(speed);
+
         this.coins.sound = this.scene.sound.add(this.coin.soundKey, {});
 
-        this.scene.anims.create({
-            key: this.coin.key,
-            frames: this.scene.anims.generateFrameNumbers(this.coin.mappingKey, {}),
-            frameRate: 20,
-            repeat: -1
-        });
+        if (!this.scene.anims.exists(this.coin.key)) {
+            this.scene.anims.create({
+                key: this.coin.key,
+                frames: this.scene.anims.generateFrameNumbers(this.coin.mappingKey, {}),
+                frameRate: 20,
+                repeat: -1
+            });
+        }
 
         this.generateReward(numCoinsToGenerate);
 
-        this.scene.events.on('onCoinCollided', (id: string) => {
-            this.handleCoinCollided(id);
-        });
-        this.scene.events.on('onCoinDestroyed', (id: string) => {
-            this.handleCoinDestroyed(id);
-        });
-        this.scene.events.on('onMapSpeedChanged', (speed: number) => {
-            this.handleMapSpeedChanged(speed);
-        });
+        // Coin events are Reward-only — wipe by name so prior restart handlers cannot
+        // touch destroyed state (that freeze on first pickup after AGAIN).
+        this.scene.events.off('onCoinCollided');
+        this.scene.events.off('onCoinDestroyed');
+        this.scene.events.on('onCoinCollided', this.onCoinCollidedHandler);
+        this.scene.events.on('onCoinDestroyed', this.onCoinDestroyedHandler);
+
+        // Shared with map/traffic/background — never wipe the whole channel.
+        this.scene.events.on('onMapSpeedChanged', this.onMapSpeedChangedHandler);
     }
 
     public getEarnedPoints(): number {
         return this.earnedPoints;
     }
 
+    /** Freeze pickups on crash — coins should not keep spinning while cars are frozen. */
+    public freeze(): void {
+        this.frozen = true;
+        this.speed = 0;
+
+        Object.values(this.coins.spriteMapper).forEach((sprite) => {
+            if (sprite && sprite.active) {
+                sprite.anims.pause();
+            }
+        });
+    }
+
+    /**
+     * Survival / distance score — faster road = more points.
+     * Coins remain the bigger burst reward on top of this.
+     */
+    public addDriveScore(deltaMs: number): void {
+        const speedAbs = Math.abs(this.speed);
+        if (speedAbs <= 0) {
+            return;
+        }
+
+        // Slow drip so coins stay worth chasing (~1 pt / 700ms at base speed).
+        this.driveScoreCarry += speedAbs * (deltaMs / 700);
+
+        if (this.driveScoreCarry >= 1) {
+            const gained = Math.floor(this.driveScoreCarry);
+            this.driveScoreCarry -= gained;
+            this.earnedPoints += gained;
+            this.scene.events.emit('onScoreChanged', this.earnedPoints, gained);
+        }
+    }
+
     public generateReward(numCoinsToGenerate: number): void {
+        this.frozen = false;
         this.clearReward();
 
         this.generateRandomCoins(
@@ -130,6 +180,11 @@ export default class Reward implements IMovable {
     }
 
     public registerCoins(): void {
+        // Rebuild group without destroying live sprites (replacement spawn path).
+        if (this.coins.group) {
+            this.coins.group.clear(false, false);
+        }
+
         this.coins.group = this.scene.physics.add.group(
             Object.keys(this.coins.spriteMapper).map(c => this.coins.spriteMapper[c])
         );
@@ -155,13 +210,18 @@ export default class Reward implements IMovable {
     }
 
     private clearReward(): void {
+        // Stop timers/tweens on every coin before wiping sprites (prevents zombie watchers).
+        Object.values(this.coins.objectMapper).forEach((coin) => coin.dispose());
+
         this.coins.numCreatedCoins = 0;
 
         this.earnedPoints = 0;
+        this.driveScoreCarry = 0;
 
         this.scene.events.emit('onScoreChanged', this.earnedPoints);
 
         this.coins.group?.clear(true, true);
+        this.coins.group = undefined;
 
         this.coins.objectMapper = {};
         this.coins.spriteMapper = {};
@@ -174,35 +234,54 @@ export default class Reward implements IMovable {
     private handleCoinCollided(id: string): void {
         const coinObject = this.coins.objectMapper[id];
 
-        if (coinObject) {
-            if (this.player.getLane() === coinObject.getLane()) {
-                this.coins.sound?.play();
-
-                this.earnedPoints += coinObject.getRewardPoints();
-
-                this.scene.events.emit('onScoreChanged', this.earnedPoints, coinObject.getRewardPoints());
-
-                // You can destroy a coin that has already been taken/collected
-                this.coins.objectMapper[id].destroyCoin();
-
-                this.recreateCoin(id);
-
-                console.log(`Earned points: ${this.earnedPoints}`);
-            }
+        if (!coinObject) {
+            return;
         }
+
+        if (this.player.getLane() !== coinObject.getLane()) {
+            return;
+        }
+
+        // Claim immediately — overlap can fire twice in one step.
+        if (!coinObject.tryBeginCollect()) {
+            return;
+        }
+
+        const points = coinObject.getRewardPoints();
+        const pos = coinObject.getPosition();
+
+        this.coins.sound?.play();
+
+        this.earnedPoints += points;
+        this.scene.events.emit('onScoreChanged', this.earnedPoints, points);
+
+        const sprite = coinObject.getSprite();
+        this.coins.group?.remove(sprite, false, false);
+
+        // Remove from maps now so off-screen watcher won't double-spawn;
+        // motion tween finishes the sprite, then we respawn a new coin.
+        delete this.coins.objectMapper[id];
+        delete this.coins.spriteMapper[id];
+
+        // Same-beat FX + coin motion.
+        PickupFx.play(this.scene, pos.x, pos.y - 8, points);
+        coinObject.collectWithMotion(PickupFx.DURATION_MS, () => {
+            this.spawnReplacementCoin();
+        });
     }
 
     private handleCoinDestroyed(id: string): void {
         if (this.coins.objectMapper[id]) {
-            this.recreateCoin(id);
-
-            console.log(`Coin #${id} is history!`);
+            delete this.coins.objectMapper[id];
+            delete this.coins.spriteMapper[id];
+            this.spawnReplacementCoin();
         }
     }
 
-    private recreateCoin(id: string): void {
-        delete this.coins.objectMapper[id];
-        delete this.coins.spriteMapper[id];
+    private spawnReplacementCoin(): void {
+        if (this.frozen) {
+            return;
+        }
 
         this.generateRandomCoins(
             1,

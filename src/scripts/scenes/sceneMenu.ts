@@ -1,10 +1,12 @@
 import { sourceModel } from '../models/source'
-import { Direction, LayerIDX } from '../objects/_common/common'
-import { Controls, ControlState, DeviceType, SettingsModel } from '../models/settings'
+import Common, { Direction, LayerIDX } from '../objects/_common/common'
+import { ControlState, DeviceType, SettingsModel } from '../models/settings'
 
 import BasicButton, { BasicButtonMapping } from '../objects/buttons/basicButton';
+import MuteButton from '../objects/buttons/muteButton';
 import { BackgroundTileSpriteMapping } from '../objects/tilesprites/backgroundTileSprite'
 import HUD, { HUDFrameSettings } from '../objects/HUD';
+import ScoreStorage from '../objects/_common/scoreStorage';
 
 import Map from '../objects/map/map'
 import Traffic from '../objects/traffic/traffic'
@@ -60,49 +62,25 @@ export default class SceneMenu extends Phaser.Scene {
     depth: 7
   };
 
+  /** Title banner → vehicle grid → Start (tight under the grid). */
+  private readonly layout = {
+    heroY: 0.10,
+    vehiclesY: 0.26,
+    titleScale: 1.35,
+    startScale: 1.15,
+    startActionScale: 1.22,
+    startGapBelowPanel: 22,
+  };
+
   private readonly start: BasicButtonMapping = {
     mappingKey: sourceModel.spriteStart.mappingKey,
-    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.13),
-    standartScale: 1.5,
-    actionScale: 1.55,
+    standartScale: this.layout.startScale,
+    actionScale: this.layout.startActionScale,
     depth: LayerIDX.GUI,
   };
 
-  private readonly controls: {
-    lrButton: BasicButtonMapping;
-    udButton: BasicButtonMapping;
-
-    selectedControls: Controls
-
-    screenOffsetMult?: Phaser.Math.Vector2;
-
-    group?: Phaser.GameObjects.Group;
-  } & HUDFrameSettings = {
-      lrButton: {
-        mappingKey: sourceModel.spriteArrowsSelect.mappingKey,
-        standartScale: 1.0,
-        actionScale: 1.15,
-        depth: LayerIDX.GUI,
-        screenOffsetMult: new Phaser.Math.Vector2(0.1, 0.22)
-      },
-      udButton: {
-        mappingKey: sourceModel.spriteArrowsSelect.mappingKey,
-        standartScale: 1.0,
-        actionScale: 1.15,
-        depth: LayerIDX.GUI,
-        screenOffsetMult: new Phaser.Math.Vector2(0.3, 0.22)
-      },
-
-      screenOffsetMult: new Phaser.Math.Vector2(0.01, 0.25),
-
-      text: 'Select your preferred controls:',
-      textPadding: 10,
-      fontSize: 48,
-      color: 0x333333,
-      alpha: 0.65,
-
-      selectedControls: Controls.LEFT_RIGHT
-    };
+  private logo?: Phaser.GameObjects.Image;
+  private vehiclesPanelBottom: number = 0;
 
   private readonly vehicles: {
     mapping: { [id: string]: Phaser.GameObjects.Image; };
@@ -112,7 +90,9 @@ export default class SceneMenu extends Phaser.Scene {
 
     selectedVehicle: VehicleType;
 
-    screenOffsetMult?: Phaser.Math.Vector2;
+    /** Local grid cell size (atlas frame ≈ 124×65). */
+    cellSize: Phaser.Math.Vector2;
+    columns: number;
 
     depth?: number;
 
@@ -120,14 +100,15 @@ export default class SceneMenu extends Phaser.Scene {
   } & HUDFrameSettings = {
       mapping: {},
 
-      standartScale: 1.0,
-      actionScale: 1.25,
+      standartScale: 1.1,
+      actionScale: 1.35,
 
-      screenOffsetMult: new Phaser.Math.Vector2(0.57, 0.25),
+      cellSize: new Phaser.Math.Vector2(140, 80),
+      columns: 5,
 
-      text: 'Select your preferred vehicle:',
-      textPadding: 10,
-      fontSize: 48,
+      text: 'Select vehicle',
+      textPadding: 14,
+      fontSize: 28,
       color: 0x333333,
       alpha: 0.65,
 
@@ -170,14 +151,30 @@ export default class SceneMenu extends Phaser.Scene {
   }
 
   private create(): void {
+    // Scene instance is reused when returning from a crash; clear stale refs.
+    this.city.tileSprite = undefined;
+    this.hill.tileSprite = undefined;
+    this.clouds.tileSprite = undefined;
+    this.nearForest.tileSprite = undefined;
+    this.farForest.tileSprite = undefined;
+    this.farthestForest.tileSprite = undefined;
+    this.map.object = undefined;
+    this.traffic.object = undefined;
+    this.start.button = undefined;
+    this.logo = undefined;
+    this.vehicles.group = undefined;
+    this.vehicles.mapping = {};
+
     this.prepareMap();
     this.prepareBackground();
-    this.prepareStart();
-    this.prepareControls();
+    this.prepareHero();
+    this.prepareHighScore();
     this.prepareVehicles();
+    this.prepareStart();
     this.prepareTraffic();
+    new MuteButton(this);
 
-    this.map.object?.changeSpeed(this.map.moveSpeed);
+    this.map.object!.changeSpeed(this.map.moveSpeed);
   }
 
   public update(): void {
@@ -217,8 +214,6 @@ export default class SceneMenu extends Phaser.Scene {
   }
 
   private prepareBackground(): void {
-    //this.add.image(this.cameras.main.centerX, 100, sourceModel.imageLogo.mappingKey);
-
     if (!this.city.tileSprite) {
       this.city.tileSprite =
         new BackgroundTileSpriteExtended(
@@ -304,16 +299,45 @@ export default class SceneMenu extends Phaser.Scene {
     }
   }
 
+  private prepareHero(): void {
+    // Same UI family as GAME OVER / START — cohesive title, not a fake series logo.
+    this.logo = this.add.image(
+      this.cameras.main.width * 0.5,
+      this.cameras.main.height * this.layout.heroY,
+      sourceModel.imageLogo.mappingKey
+    )
+      .setOrigin(0.5, 0.5)
+      .setScale(this.layout.titleScale)
+      .setDepth(LayerIDX.GUI);
+
+    if (this.textures.exists(sourceModel.imageLogo.mappingKey)) {
+      this.textures.get(sourceModel.imageLogo.mappingKey).setFilter(Phaser.Textures.FilterMode.NEAREST);
+    }
+  }
+
+  private prepareHighScore(): void {
+    const highScore = ScoreStorage.getHighScore();
+    const label = this.add.bitmapText(
+      this.cameras.main.width - 24,
+      18,
+      sourceModel.font.mappingKey,
+      `HIGHEST SCORE ${Common.fillZeroPadding(highScore, 6)}`,
+      36
+    )
+      .setOrigin(1, 0)
+      .setDepth(LayerIDX.GUI + 1);
+  }
+
   private prepareStart(): void {
+    const startY = this.vehiclesPanelBottom + this.layout.startGapBelowPanel
+      + (69 * this.layout.startScale) / 2;
+
     this.start.button = new BasicButton(
       this,
-      new Phaser.Math.Vector2(
-        this.cameras.main.width * this.start.screenOffsetMult!.x ?? 1,
-        this.cameras.main.height * this.start.screenOffsetMult!.y ?? 1
-      ),
+      new Phaser.Math.Vector2(this.cameras.main.width * 0.5, startY),
       sourceModel.spriteStart.mappingKey,
       this.start.depth,
-      this.start.standartScale,
+      this.layout.startScale,
       undefined,
       sourceModel.soundButton.mappingKey
     );
@@ -323,136 +347,92 @@ export default class SceneMenu extends Phaser.Scene {
     this.start.button?.on('pointerdown', this.handlePressedStartButton, this);
   }
 
-  private prepareControls(): void {
-    const controlsText = this.add.bitmapText(
-      this.controls.textPadding ?? 1.0,
-      this.controls.textPadding ?? 1.0,
-      sourceModel.font.mappingKey,
-      this.controls.text,
-      this.controls.fontSize
-    );
-    controlsText.setDepth(LayerIDX.GUI + 1);
-
-    const hud = new HUD(
-      this,
-      new Phaser.Geom.Rectangle(
-        0,
-        0,
-        2.0 * (this.controls.textPadding ?? 1.0) + controlsText.width,
-        1.5 * (this.controls.textPadding ?? 1.0) + controlsText.height
-      ),
-      this.controls.color,
-      this.controls.alpha
-    );
-
-    this.controls.lrButton.button = new BasicButton(
-      this,
-      new Phaser.Math.Vector2(
-        this.cameras.main.width * this.controls.lrButton.screenOffsetMult!.x ?? 1,
-        this.cameras.main.height * this.controls.lrButton.screenOffsetMult!.y ?? 1
-      ),
-      sourceModel.spriteArrowsSelect.mappingKey,
-      this.controls.lrButton.depth,
-      undefined,
-      undefined,
-      sourceModel.soundButton.mappingKey
-    );
-
-    this.controls.lrButton.button?.on('pointerover', this.handleHoverLRControlArrows, this);
-    this.controls.lrButton.button?.on('pointerout', this.handleEndHoverControlArrows, this);
-    this.controls.lrButton.button?.on('pointerdown', this.handlePressedLRControlArrows, this);
-
-    this.controls.udButton.button = new BasicButton(
-      this,
-      new Phaser.Math.Vector2(
-        this.cameras.main.width * this.controls.udButton.screenOffsetMult!.x ?? 1,
-        this.cameras.main.height * this.controls.udButton.screenOffsetMult!.y ?? 1
-      ),
-      sourceModel.spriteArrowsSelect.mappingKey,
-      this.controls.udButton.depth,
-      undefined,
-      90,
-      sourceModel.soundButton.mappingKey
-    );
-
-    this.controls.udButton.button?.on('pointerover', this.handleHoverUDControlArrows, this);
-    this.controls.udButton.button?.on('pointerout', this.handleEndHoverControlArrows, this);
-    this.controls.udButton.button?.on('pointerdown', this.handlePressedUDControlArrows, this);
-
-    this.controls.group = this.add.group();
-
-    this.controls.group?.add(controlsText);
-    this.controls.group?.add(hud);
-    this.controls.group?.add(this.controls.lrButton.button);
-    this.controls.group?.add(this.controls.udButton.button);
-
-    this.controls.group?.incXY(
-      this.cameras.main.width * this.controls.screenOffsetMult!.x ?? 1,
-      this.cameras.main.height * this.controls.screenOffsetMult!.y ?? 1
-    );
-
-    if (this.controls.selectedControls === Controls.LEFT_RIGHT) {
-      this.switchControls(ControlState.SELECTED, ControlState.NOT_SELECTED);
-    } else {
-      this.switchControls(ControlState.NOT_SELECTED, ControlState.SELECTED);
-    }
-  }
-
   private prepareVehicles(): void {
+    const padding = this.vehicles.textPadding ?? 16;
+    const columns = this.vehicles.columns;
+    const rows = Math.ceil(10 / columns);
+    const gridWidth = columns * this.vehicles.cellSize.x * this.vehicles.standartScale;
+    const gridHeight = rows * this.vehicles.cellSize.y * this.vehicles.standartScale;
+
     const vehiclesText = this.add.bitmapText(
-      this.vehicles.textPadding ?? 1.0,
-      this.vehicles.textPadding ?? 1.0,
+      0,
+      0,
       sourceModel.font.mappingKey,
       this.vehicles.text,
       this.vehicles.fontSize
     );
     vehiclesText.setDepth(LayerIDX.GUI + 1);
+    vehiclesText.setOrigin(0.5, 0);
+
+    const panelWidth = Math.max(vehiclesText.width, gridWidth) + 2 * padding;
+    const panelHeight = padding + vehiclesText.height + padding + gridHeight + padding;
+
+    const panelX = (this.cameras.main.width - panelWidth) / 2;
+    const panelY = this.cameras.main.height * this.layout.vehiclesY;
+    this.vehiclesPanelBottom = panelY + panelHeight;
 
     const hud = new HUD(
       this,
       new Phaser.Geom.Rectangle(
         0,
         0,
-        2.0 * (this.controls.textPadding ?? 1.0) + vehiclesText.width,
-        1.5 * (this.controls.textPadding ?? 1.0) + vehiclesText.height
+        panelWidth,
+        panelHeight
       ),
-      this.controls.color,
-      this.controls.alpha
+      this.vehicles.color,
+      this.vehicles.alpha
     );
+    hud.setPosition(panelX, panelY);
+    hud.setDepth(LayerIDX.GUI);
+
+    vehiclesText.setPosition(panelX + panelWidth / 2, panelY + padding);
 
     this.vehicles.group = this.add.group();
-
     this.vehicles.group?.add(hud);
     this.vehicles.group?.add(vehiclesText);
 
-    const offset = new Phaser.Math.Vector2(this.vehicles.textPadding, 3.0 * vehiclesText.height);
-
-    this.addVehicleToGroupAsGrid(VehicleType.AE_86_TRUENO, Direction.RIGHT, new Phaser.Math.Vector2(0, 0), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.AE_86_LEVIN, Direction.RIGHT, new Phaser.Math.Vector2(1, 0), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.RX_7_FC, Direction.RIGHT, new Phaser.Math.Vector2(2, 0), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.RX_7_FD, Direction.RIGHT, new Phaser.Math.Vector2(3, 0), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.S_13, Direction.RIGHT, new Phaser.Math.Vector2(0, 1), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.CIVIC, Direction.RIGHT, new Phaser.Math.Vector2(1, 1), offset);
-    this.addVehicleToGroupAsGrid(VehicleType._180_SX, Direction.RIGHT, new Phaser.Math.Vector2(2, 1), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.EVO_3, Direction.RIGHT, new Phaser.Math.Vector2(3, 1), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.R_32, Direction.RIGHT, new Phaser.Math.Vector2(0, 2), offset);
-    this.addVehicleToGroupAsGrid(VehicleType.EVO_4, Direction.RIGHT, new Phaser.Math.Vector2(1, 2), offset);
-
-    this.vehicles.group?.incXY(
-      this.cameras.main.width * this.vehicles.screenOffsetMult!.x ?? 1,
-      this.cameras.main.height * this.vehicles.screenOffsetMult!.y ?? 1
+    const gridOrigin = new Phaser.Math.Vector2(
+      panelX + (panelWidth - gridWidth) / 2,
+      panelY + padding + vehiclesText.height + padding
     );
+
+    const vehicleOrder: VehicleType[] = [
+      VehicleType.AE_86_TRUENO,
+      VehicleType.AE_86_LEVIN,
+      VehicleType.RX_7_FC,
+      VehicleType.RX_7_FD,
+      VehicleType.S_13,
+      VehicleType.CIVIC,
+      VehicleType._180_SX,
+      VehicleType.EVO_3,
+      VehicleType.R_32,
+      VehicleType.EVO_4,
+    ];
+
+    vehicleOrder.forEach((vehicle, index) => {
+      const col = index % columns;
+      const row = Math.floor(index / columns);
+      this.addVehicleToGroupAsGrid(
+        vehicle,
+        Direction.RIGHT,
+        new Phaser.Math.Vector2(col, row),
+        gridOrigin
+      );
+    });
+
+    const selectedKey = `${this.vehicles.selectedVehicle}/${Direction.RIGHT}`;
+    if (this.vehicles.mapping[selectedKey]) {
+      this.rescaleVehicleSelection(this.vehicles.selectedVehicle, selectedKey);
+    }
   }
   //#endregion
 
   private addVehicleToGroupAsGrid(vehicle: VehicleType, direction: Direction, gridPos: Phaser.Math.Vector2, offset: Phaser.Math.Vector2): void {
     const mappingKey = `${vehicle.toString()}/${direction.toString()}`;
 
-    const vehicleTex = this.textures.get('atlas_vehicles').get(mappingKey);
-
     this.vehicles.mapping[mappingKey] = this.add.image(
-      offset.x + (124 * gridPos.x) * this.vehicles.standartScale,
-      offset.y + (vehicleTex.height * gridPos.y) * this.vehicles.standartScale,
+      offset.x + (this.vehicles.cellSize.x * gridPos.x) * this.vehicles.standartScale,
+      offset.y + (this.vehicles.cellSize.y * gridPos.y) * this.vehicles.standartScale,
       sourceModel.atlasVehicle.mappingKey,
       mappingKey
     )
@@ -463,23 +443,6 @@ export default class SceneMenu extends Phaser.Scene {
       .on('pointerdown', () => { this.handleClickVehicle(vehicle, mappingKey) });
 
     this.vehicles.group?.add(this.vehicles.mapping[mappingKey]);
-  }
-
-  private switchControls(lrState: ControlState, udState: ControlState): void {
-    this.controls.lrButton.button?.setFrame(lrState);
-    this.controls.udButton.button?.setFrame(udState);
-
-    this.controls.lrButton.button?.setScale(
-      lrState === ControlState.SELECTED || lrState === ControlState.PENDING ?
-        this.controls.lrButton.actionScale ?? 1 :
-        this.controls.lrButton.standartScale ?? 1
-    );
-
-    this.controls.udButton.button?.setScale(
-      udState === ControlState.SELECTED || udState === ControlState.PENDING ?
-        this.controls.udButton.actionScale ?? 1 :
-        this.controls.udButton.standartScale ?? 1
-    );
   }
 
   private selectVehicle(vehicle: VehicleType, mappingKey: string): void {
@@ -534,56 +497,10 @@ export default class SceneMenu extends Phaser.Scene {
     this.start.button?.off('pointerout');
     this.start.button?.off('pointerdown');
 
-    this.controls.lrButton.button?.off('pointerover');
-    this.controls.lrButton.button?.off('pointerout');
-    this.controls.lrButton.button?.off('pointerdown');
-
-    this.controls.udButton.button?.off('pointerover');
-    this.controls.udButton.button?.off('pointerout');
-    this.controls.udButton.button?.off('pointerdown');
-
     this.scene.start('PreloadLevel', new SettingsModel(
       this.sys.game.device.os.desktop ? DeviceType.DESKTOP : DeviceType.MOBILE,
-
-      this.controls.selectedControls,
       this.vehicles.selectedVehicle
     ));
-  }
-
-  private handleHoverLRControlArrows(context: any) {
-    if (this.controls.selectedControls !== Controls.LEFT_RIGHT) {
-      this.switchControls(ControlState.PENDING, ControlState.SELECTED);
-
-      this.controls.lrButton.button?.playSound();
-    }
-  }
-
-  private handleHoverUDControlArrows(context: any) {
-    if (this.controls.selectedControls !== Controls.UP_DOWN) {
-      this.switchControls(ControlState.SELECTED, ControlState.PENDING);
-
-      this.controls.udButton.button?.playSound();
-    }
-  }
-
-  private handleEndHoverControlArrows(context: any) {
-    if (this.controls.selectedControls === Controls.LEFT_RIGHT) {
-      this.switchControls(ControlState.SELECTED, ControlState.NOT_SELECTED);
-    } else {
-      this.switchControls(ControlState.NOT_SELECTED, ControlState.SELECTED);
-    }
-  }
-
-  private handlePressedLRControlArrows(context: any) {
-    this.controls.selectedControls = Controls.LEFT_RIGHT;
-
-    this.switchControls(ControlState.SELECTED, ControlState.NOT_SELECTED);
-  }
-
-  private handlePressedUDControlArrows(context: any) {
-    this.controls.selectedControls = Controls.UP_DOWN;
-
-    this.switchControls(ControlState.NOT_SELECTED, ControlState.SELECTED);
   }
 }
 //#endregion
