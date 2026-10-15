@@ -1,7 +1,7 @@
 import { sourceModel } from '../models/source'
 import { ControlState, DeviceType, SettingsModel } from '../models/settings'
 
-import BasicButton, { BasicButtonMapping } from '../objects/buttons/basicButton';
+import BasicButton from '../objects/buttons/basicButton';
 import MuteButton from '../objects/buttons/muteButton';
 import { BackgroundTileSpriteMapping } from '../objects/tilesprites/backgroundTileSprite'
 import { HUDFrameSettings } from '../objects/HUD';
@@ -65,34 +65,17 @@ export default class SceneLevel extends Phaser.Scene {
     depth: 7
   };
 
-  /**
-   * Mobile-only lane controls — landscape thumb layout:
-   * up/left lane on the left, down/right lane on the right, large hit targets.
-   */
-  private readonly controls: {
-    upButton: BasicButtonMapping;
-    downButton: BasicButtonMapping;
+  /** Mobile lane buttons on the screen edges — no swipe, center stays clear. */
+  private readonly mobileControls: {
+    enabled: boolean;
     scale: number;
-    /** Extra padding around the sprite for fat-finger hits (texture pixels). */
     hitPad: number;
-    group?: Phaser.GameObjects.Group;
+    upButton?: BasicButton;
+    downButton?: BasicButton;
   } = {
-      upButton: {
-        mappingKey: sourceModel.spriteArrowsPlay.mappingKey,
-        screenOffsetMult: new Phaser.Math.Vector2(0.11, 0.78),
-        standartScale: 1.45,
-        actionScale: 1.55,
-        depth: LayerIDX.GUI
-      },
-      downButton: {
-        mappingKey: sourceModel.spriteArrowsPlay.mappingKey,
-        screenOffsetMult: new Phaser.Math.Vector2(0.89, 0.78),
-        standartScale: 1.45,
-        actionScale: 1.55,
-        depth: LayerIDX.GUI
-      },
-      scale: 1.45,
-      hitPad: 28
+      enabled: false,
+      scale: 1.35,
+      hitPad: 24
     };
 
   private readonly gameOver: {
@@ -201,9 +184,7 @@ export default class SceneLevel extends Phaser.Scene {
     this.reward.object = undefined;
     this.reward.scoreHUD = undefined;
     this.reward.highScoreHUD = undefined;
-    this.controls.upButton.button = undefined;
-    this.controls.downButton.button = undefined;
-    this.controls.group = undefined;
+    this.teardownMobileControls();
     this.gameOver.image = undefined;
     this.gameOver.score = undefined;
     this.gameOver.againButton = undefined;
@@ -230,7 +211,7 @@ export default class SceneLevel extends Phaser.Scene {
     this.prepareReward();
 
     if (this.menuSettings.deviceType === DeviceType.MOBILE) {
-      this.prepareControls();
+      this.prepareMobileControls();
     }
 
     this.traffic.player?.setEnableTurn(true);
@@ -289,33 +270,43 @@ export default class SceneLevel extends Phaser.Scene {
       // Freeze the whole playfield: cars already stopped; coins must stop spinning too.
       this.reward.object?.freeze();
 
-      this.setMobileControlsVisible(false);
+      this.setMobileControlsEnabled(false);
 
       this.showGameOverOverlay(earnedPoints);
     }
   }
 
-  private setMobileControlsVisible(visible: boolean): void {
-    const buttons = [this.controls.upButton.button, this.controls.downButton.button];
-    const pad = this.controls.hitPad;
+  private setMobileControlsEnabled(enabled: boolean): void {
+    this.mobileControls.enabled = enabled;
 
-    for (const button of buttons) {
+    for (const button of [this.mobileControls.upButton, this.mobileControls.downButton]) {
       if (!button) {
         continue;
       }
 
-      button.setVisible(visible);
-      if (visible) {
-        button.setInteractive(
-          new Phaser.Geom.Rectangle(-pad, -pad, button.width + pad * 2, button.height + pad * 2),
-          Phaser.Geom.Rectangle.Contains
-        );
+      button.setVisible(enabled);
+      if (enabled) {
+        this.applyMobileHitArea(button);
       } else {
         button.disableInteractive();
       }
     }
+  }
 
-    this.controls.group?.setVisible(visible);
+  private teardownMobileControls(): void {
+    this.mobileControls.upButton?.destroy();
+    this.mobileControls.downButton?.destroy();
+    this.mobileControls.upButton = undefined;
+    this.mobileControls.downButton = undefined;
+    this.mobileControls.enabled = false;
+  }
+
+  private applyMobileHitArea(button: BasicButton): void {
+    const pad = this.mobileControls.hitPad;
+    button.setInteractive(
+      new Phaser.Geom.Rectangle(-pad, -pad, button.width + pad * 2, button.height + pad * 2),
+      Phaser.Geom.Rectangle.Contains
+    );
   }
 
   private showGameOverOverlay(earnedPoints: number): void {
@@ -433,101 +424,63 @@ export default class SceneLevel extends Phaser.Scene {
     this.scene.start('SceneMenu');
   }
 
-  //#region Handlers
-  private handlePressedUpControlButton(context: any): void {
-    this.traffic.player?.turnLeft();
+  //#region Mobile controls
+  private prepareMobileControls(): void {
+    this.teardownMobileControls();
 
-    this.controls.upButton.button?.setFrame(ControlState.SELECTED);
+    const w = this.cameras.main.width;
+    const h = this.cameras.main.height;
+    const scale = this.mobileControls.scale;
+    const depth = LayerIDX.GUI;
 
-    this.controls.upButton.button?.playSound();
+    // Left = upper lane, right = lower lane — clear buttons on the edges only.
+    this.mobileControls.upButton = new BasicButton(
+      this,
+      new Phaser.Math.Vector2(w * 0.08, h * 0.58),
+      sourceModel.spriteArrowsPlay.mappingKey,
+      depth,
+      scale,
+      90,
+      sourceModel.soundButton.mappingKey
+    );
+
+    this.mobileControls.downButton = new BasicButton(
+      this,
+      new Phaser.Math.Vector2(w * 0.92, h * 0.58),
+      sourceModel.spriteArrowsPlay.mappingKey,
+      depth,
+      scale,
+      -90,
+      sourceModel.soundButton.mappingKey
+    );
+
+    this.wireMobileLaneButton(this.mobileControls.upButton, () => this.traffic.player?.turnLeft());
+    this.wireMobileLaneButton(this.mobileControls.downButton, () => this.traffic.player?.turnRight());
+
+    this.setMobileControlsEnabled(true);
   }
 
-  private handlePressedDownControlButton(context: any): void {
-    this.traffic.player?.turnRight();
+  private wireMobileLaneButton(button: BasicButton, onTurn: () => void): void {
+    button.setFrame(ControlState.PENDING);
+    this.applyMobileHitArea(button);
 
-    this.controls.downButton.button?.setFrame(ControlState.SELECTED);
+    button.on('pointerdown', () => {
+      if (!this.mobileControls.enabled || this.isGameOver) {
+        return;
+      }
 
-    this.controls.downButton.button?.playSound();
-  }
+      onTurn();
+      button.setFrame(ControlState.SELECTED);
+      button.playSound();
+    });
 
-  private handleUnPressedUpControlButton(context: any): void {
-    this.controls.upButton.button?.setFrame(ControlState.PENDING);
-  }
-
-  private handleUnPressedDownControlButton(context: any): void {
-    this.controls.downButton.button?.setFrame(ControlState.PENDING);
+    const release = () => button.setFrame(ControlState.PENDING);
+    button.on('pointerup', release);
+    button.on('pointerupoutside', release);
+    button.on('pointerout', release);
   }
   //#endregion
   //#region Prepares
-  private prepareControls(): void {
-    if (!(this.controls.upButton.button && this.controls.downButton.button)) {
-      const w = this.cameras.main.width;
-      const h = this.cameras.main.height;
-      const scale = this.controls.scale;
-
-      this.controls.upButton.button = new BasicButton(
-        this,
-        new Phaser.Math.Vector2(
-          w * (this.controls.upButton.screenOffsetMult?.x ?? 0.11),
-          h * (this.controls.upButton.screenOffsetMult?.y ?? 0.78)
-        ),
-        sourceModel.spriteArrowsPlay.mappingKey,
-        this.controls.upButton.depth,
-        scale,
-        90,
-        sourceModel.soundButton.mappingKey
-      );
-
-      this.controls.downButton.button = new BasicButton(
-        this,
-        new Phaser.Math.Vector2(
-          w * (this.controls.downButton.screenOffsetMult?.x ?? 0.89),
-          h * (this.controls.downButton.screenOffsetMult?.y ?? 0.78)
-        ),
-        sourceModel.spriteArrowsPlay.mappingKey,
-        this.controls.downButton.depth,
-        scale,
-        -90,
-        sourceModel.soundButton.mappingKey
-      );
-
-      this.controls.group = this.add.group();
-      this.controls.group.add(this.controls.upButton.button);
-      this.controls.group.add(this.controls.downButton.button);
-
-      this.wireMobileControl(
-        this.controls.upButton.button,
-        this.handlePressedUpControlButton,
-        this.handleUnPressedUpControlButton
-      );
-      this.wireMobileControl(
-        this.controls.downButton.button,
-        this.handlePressedDownControlButton,
-        this.handleUnPressedDownControlButton
-      );
-    }
-
-    this.setMobileControlsVisible(true);
-  }
-
-  /** Fat-finger hit area + press/release wiring for one lane arrow. */
-  private wireMobileControl(
-    button: BasicButton,
-    onDown: (context: any) => void,
-    onUp: (context: any) => void
-  ): void {
-    const pad = this.controls.hitPad;
-    button.setFrame(ControlState.PENDING);
-    button.setInteractive(
-      new Phaser.Geom.Rectangle(-pad, -pad, button.width + pad * 2, button.height + pad * 2),
-      Phaser.Geom.Rectangle.Contains
-    );
-    // Keep presses working if the finger slides off the glyph a bit.
-    button.on('pointerdown', onDown, this);
-    button.on('pointerup', onUp, this);
-    button.on('pointerupoutside', onUp, this);
-    button.on('pointerout', onUp, this);
-  }
 
   private prepareReward(): void {
     const highScore = ScoreStorage.getHighScore();
