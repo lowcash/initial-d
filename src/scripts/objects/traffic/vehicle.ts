@@ -158,35 +158,46 @@ export default class Vehicle implements ICollidable, IMovable {
         return vehicles[Common.getRandomEnumValue(VehicleType)];
     }
 
+    private laneDepth(laneY: number): number {
+        return this.depthLayer + this.map.getNumRoadChunkLanes(this.gridPos.x) - laneY;
+    }
+
     private async turn(direction: Direction, velocity: number): Promise<void> {
         this.sprite?.anims.play(`${this.type.toString()}_${direction}`, true);
 
-        if(this.sprite) {
-            switch(direction) {
+        if (this.sprite) {
+            const fromLane = this.gridPos.y;
+            const fromDepth = this.laneDepth(fromLane);
+
+            switch (direction) {
                 case Direction.LEFT: {
-                    this.sprite?.setVelocityY(-velocity);
+                    // Moving to upper lane — slip under (lower z) during the cut.
+                    this.sprite.setDepth(fromDepth - 1);
+                    this.sprite.setVelocityY(-velocity);
 
                     const position: number = this.map.getLanePosition(this.gridPos.x, this.gridPos.y + 1);
                     const scale: number = this.map.getPerspectiveScale(this.gridPos.x, this.gridPos.y + 1);
-                    
-                    for(let i = 0; this.sprite.y > position; ++i) {
+
+                    for (let i = 0; this.sprite.y > position; ++i) {
                         this.sprite.setScale((this.sprite.y / position) * scale);
 
                         await Common.delay(60, i);
                     }
-                    
+
                     this.sprite.y = position;
 
                     break;
                 }
 
                 case Direction.RIGHT: {
-                    this.sprite?.setVelocityY(velocity);
+                    // Moving to lower lane — pass over (higher z) during the cut.
+                    this.sprite.setDepth(fromDepth + 1);
+                    this.sprite.setVelocityY(velocity);
 
                     const position: number = this.map.getLanePosition(this.gridPos.x, this.gridPos.y - 1);
                     const scale: number = this.map.getPerspectiveScale(this.gridPos.x, this.gridPos.y - 1);
 
-                    for(let i = 0; this.sprite.y < position; ++i) {
+                    for (let i = 0; this.sprite.y < position; ++i) {
                         this.sprite.setScale((this.sprite.y / position) * scale);
 
                         await Common.delay(60, i);
@@ -198,10 +209,10 @@ export default class Vehicle implements ICollidable, IMovable {
                 }
             }
         }
-        
+
         this.sprite
             .setVelocityY(0)
-            .setDepth( this.depthLayer + this.map.getNumRoadChunkLanes(this.gridPos.x) - this.gridPos.y)
+            .setDepth(this.laneDepth(this.gridPos.y))
             .anims.play(`${this.type.toString()}_${Direction.FRONT.toString()}`, true);
 
         this.isTurning = false;

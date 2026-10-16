@@ -163,7 +163,8 @@ export default class Reward implements IMovable {
                 this.coin.mappingKey
             )
                 .setOrigin(0.5, 1.0)
-                .setDepth(this.depthLayer + this.map.getNumRoadChunkLanes(_posX) - _posY);
+                // Half-step under vehicles in the same lane (cars use the integer depth).
+                .setDepth(this.depthLayer + this.map.getNumRoadChunkLanes(_posX) - _posY - 0.5);
 
         this.coin.sprite?.anims.play(this.coin.key, true);
 
