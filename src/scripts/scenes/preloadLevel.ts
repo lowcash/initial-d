@@ -13,87 +13,76 @@ export default class PreloadLevel extends Phaser.Scene {
   }
 
   private preload(): void {
-    this.load.bitmapFont(sourceModel.font.mappingKey, sourceModel.font.sourcePath, sourceModel.font.sourceMapperPath);
+    const { width, height } = this.cameras.main;
 
-    this.load.image(sourceModel.imageCity.mappingKey, sourceModel.imageCity.sourcePath);
-    this.load.image(sourceModel.imageHill.mappingKey, sourceModel.imageHill.sourcePath);
-    this.load.image(sourceModel.imageForest.mappingKey, sourceModel.imageForest.sourcePath);
-    this.load.image(sourceModel.imageClouds.mappingKey, sourceModel.imageClouds.sourcePath);
+    // Visible progress — first START used to look like a black freeze while BGM (~2.4MB) decoded.
+    const label = this.add.text(width / 2, height / 2 - 36, 'LOADING...', {
+      fontFamily: 'monospace',
+      fontSize: '28px',
+      color: '#ffffff'
+    }).setOrigin(0.5);
 
-    this.load.spritesheet(
-      sourceModel.spriteArrowsPlay.mappingKey,
-      sourceModel.spriteArrowsPlay.sourcePath,
-      {
-        frameWidth: 84,
-        frameHeight: 76
-      }
-    );
+    const track = this.add.rectangle(width / 2, height / 2 + 8, 420, 18, 0x333333).setOrigin(0.5);
+    const fill = this.add.rectangle(track.x - track.width / 2, track.y, 0, 14, 0xffcc33).setOrigin(0, 0.5);
 
-    this.load.spritesheet(
-      sourceModel.spriteAgain.mappingKey,
-      sourceModel.spriteAgain.sourcePath,
-      {
-        frameWidth: 608,
-        frameHeight: 228
-      }
-    );
+    this.load.on('progress', (value: number) => {
+      fill.width = 420 * value;
+      label.setText(`LOADING... ${Math.floor(value * 100)}%`);
+    });
 
-    this.load.spritesheet(
-      sourceModel.spriteMenu.mappingKey,
-      sourceModel.spriteMenu.sourcePath,
-      {
-        frameWidth: 602,
-        frameHeight: 228
-      }
-    );
+    // Skip anything already cached from the menu (or a prior run).
+    this.loadImageIfMissing(sourceModel.imageCity.mappingKey, sourceModel.imageCity.sourcePath);
+    this.loadImageIfMissing(sourceModel.imageHill.mappingKey, sourceModel.imageHill.sourcePath);
+    this.loadImageIfMissing(sourceModel.imageForest.mappingKey, sourceModel.imageForest.sourcePath);
+    this.loadImageIfMissing(sourceModel.imageClouds.mappingKey, sourceModel.imageClouds.sourcePath);
+    this.loadImageIfMissing(sourceModel.imageRoadStraight0.mappingKey, sourceModel.imageRoadStraight0.sourcePath);
+    this.loadImageIfMissing(sourceModel.imageRoadStraight1.mappingKey, sourceModel.imageRoadStraight1.sourcePath);
+    this.loadImageIfMissing(sourceModel.imageGameOver.mappingKey, sourceModel.imageGameOver.sourcePath);
 
-    this.load.image(sourceModel.imageGameOver.mappingKey, sourceModel.imageGameOver.sourcePath);
+    if (!this.textures.exists(sourceModel.font.mappingKey)) {
+      this.load.bitmapFont(sourceModel.font.mappingKey, sourceModel.font.sourcePath, sourceModel.font.sourceMapperPath);
+    }
 
-    this.load.spritesheet(
-      sourceModel.spriteMute.mappingKey,
-      sourceModel.spriteMute.sourcePath,
-      {
-        frameWidth: 188,
-        frameHeight: 206
-      }
-    );
+    this.loadSheetIfMissing(sourceModel.spriteArrowsPlay.mappingKey, sourceModel.spriteArrowsPlay.sourcePath, 84, 76);
+    this.loadSheetIfMissing(sourceModel.spriteAgain.mappingKey, sourceModel.spriteAgain.sourcePath, 608, 228);
+    this.loadSheetIfMissing(sourceModel.spriteMenu.mappingKey, sourceModel.spriteMenu.sourcePath, 602, 228);
+    this.loadSheetIfMissing(sourceModel.spriteMute.mappingKey, sourceModel.spriteMute.sourcePath, 188, 206);
+    this.loadSheetIfMissing(sourceModel.spriteExplosion.mappingKey, sourceModel.spriteExplosion.sourcePath, 17, 17);
+    this.loadSheetIfMissing(sourceModel.spriteCoin.mappingKey, sourceModel.spriteCoin.sourcePath, 32, 32);
 
-    this.load.audio(sourceModel.soundButton.mappingKey, sourceModel.soundButton.sourcePath);
-    this.load.audio(sourceModel.soundBgm.mappingKey, sourceModel.soundBgm.sourcePath);
+    if (!this.textures.exists(sourceModel.atlasVehicle.mappingKey)) {
+      this.load.atlas(
+        sourceModel.atlasVehicle.mappingKey,
+        sourceModel.atlasVehicle.sourcePath,
+        sourceModel.atlasVehicle.sourceMapperPath
+      );
+    }
 
-    this.load.image(sourceModel.imageRoadStraight0.mappingKey, sourceModel.imageRoadStraight0.sourcePath);
-    this.load.image(sourceModel.imageRoadStraight1.mappingKey, sourceModel.imageRoadStraight1.sourcePath);
-
-    this.load.atlas(
-      sourceModel.atlasVehicle.mappingKey,
-      sourceModel.atlasVehicle.sourcePath,
-      sourceModel.atlasVehicle.sourceMapperPath
-    );
-
-    this.load.spritesheet(
-      sourceModel.spriteExplosion.mappingKey,
-      sourceModel.spriteExplosion.sourcePath,
-      {
-        frameWidth: 17,
-        frameHeight: 17
-      }
-    );
-
-    this.load.audio(sourceModel.soundExplosion.mappingKey, sourceModel.soundExplosion.sourcePath);
-
-    this.load.spritesheet(
-      sourceModel.spriteCoin.mappingKey,
-      sourceModel.spriteCoin.sourcePath,
-      {
-        frameWidth: 32,
-        frameHeight: 32
-      }
-    );
-
-    this.load.audio(sourceModel.soundCoin.mappingKey, sourceModel.soundCoin.sourcePath);
+    this.loadAudioIfMissing(sourceModel.soundButton.mappingKey, sourceModel.soundButton.sourcePath);
+    this.loadAudioIfMissing(sourceModel.soundBgm.mappingKey, sourceModel.soundBgm.sourcePath);
+    this.loadAudioIfMissing(sourceModel.soundExplosion.mappingKey, sourceModel.soundExplosion.sourcePath);
+    this.loadAudioIfMissing(sourceModel.soundCoin.mappingKey, sourceModel.soundCoin.sourcePath);
   }
 
   private create(): void {
     this.scene.start('SceneLevel', this.menuSettings);
+  }
+
+  private loadImageIfMissing(key: string, path: string): void {
+    if (!this.textures.exists(key)) {
+      this.load.image(key, path);
+    }
+  }
+
+  private loadSheetIfMissing(key: string, path: string, frameWidth: number, frameHeight: number): void {
+    if (!this.textures.exists(key)) {
+      this.load.spritesheet(key, path, { frameWidth, frameHeight });
+    }
+  }
+
+  private loadAudioIfMissing(key: string, path: string): void {
+    if (!this.cache.audio.exists(key)) {
+      this.load.audio(key, path);
+    }
   }
 }

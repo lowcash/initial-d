@@ -175,6 +175,63 @@ export default class SceneMenu extends Phaser.Scene {
     new MuteButton(this);
 
     this.map.object!.changeSpeed(this.map.moveSpeed);
+
+    // Prefetch heavy level assets while the player picks a car (avoids black freeze on START).
+    this.prefetchLevelAssets();
+  }
+
+  /** Warm the cache for BGM + game-over UI so PreloadLevel is nearly instant. */
+  private prefetchLevelAssets(): void {
+    let queued = false;
+
+    if (!this.cache.audio.exists(sourceModel.soundBgm.mappingKey)) {
+      this.load.audio(sourceModel.soundBgm.mappingKey, sourceModel.soundBgm.sourcePath);
+      queued = true;
+    }
+    if (!this.cache.audio.exists(sourceModel.soundExplosion.mappingKey)) {
+      this.load.audio(sourceModel.soundExplosion.mappingKey, sourceModel.soundExplosion.sourcePath);
+      queued = true;
+    }
+    if (!this.cache.audio.exists(sourceModel.soundCoin.mappingKey)) {
+      this.load.audio(sourceModel.soundCoin.mappingKey, sourceModel.soundCoin.sourcePath);
+      queued = true;
+    }
+    if (!this.textures.exists(sourceModel.spriteCoin.mappingKey)) {
+      this.load.spritesheet(sourceModel.spriteCoin.mappingKey, sourceModel.spriteCoin.sourcePath, {
+        frameWidth: 32,
+        frameHeight: 32
+      });
+      queued = true;
+    }
+    if (!this.textures.exists(sourceModel.spriteAgain.mappingKey)) {
+      this.load.spritesheet(sourceModel.spriteAgain.mappingKey, sourceModel.spriteAgain.sourcePath, {
+        frameWidth: 608,
+        frameHeight: 228
+      });
+      queued = true;
+    }
+    if (!this.textures.exists(sourceModel.spriteMenu.mappingKey)) {
+      this.load.spritesheet(sourceModel.spriteMenu.mappingKey, sourceModel.spriteMenu.sourcePath, {
+        frameWidth: 602,
+        frameHeight: 228
+      });
+      queued = true;
+    }
+    if (!this.textures.exists(sourceModel.spriteArrowsPlay.mappingKey)) {
+      this.load.spritesheet(sourceModel.spriteArrowsPlay.mappingKey, sourceModel.spriteArrowsPlay.sourcePath, {
+        frameWidth: 84,
+        frameHeight: 76
+      });
+      queued = true;
+    }
+    if (!this.textures.exists(sourceModel.imageGameOver.mappingKey)) {
+      this.load.image(sourceModel.imageGameOver.mappingKey, sourceModel.imageGameOver.sourcePath);
+      queued = true;
+    }
+
+    if (queued) {
+      this.load.start();
+    }
   }
 
   public update(): void {
