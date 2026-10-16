@@ -2,20 +2,20 @@ import { sourceModel } from '../models/source'
 import { ControlState } from '../models/settings'
 import { LayerIDX } from '../objects/_common/common'
 
-/** Fraction of screen height for each top/bottom tap rail. */
-export const MOBILE_RAIL_RATIO = 0.14;
+/** Height of the bottom control bar as a fraction of screen height. */
+export const MOBILE_BAR_RATIO = 0.16;
 
 /**
- * Full-screen overlay: wide top/bottom tap rails.
- * Maps naturally to upper/lower lanes without shrinking the playfield
- * and without covering the center of the road.
+ * Full-screen overlay: both lane buttons sit in one bottom bar (side by side).
+ * Thumb-friendly on landscape phones; top of the playfield stays clear.
  */
 export default class MobileControlsScene extends Phaser.Scene {
   private enabled = true;
+  private bar?: Phaser.GameObjects.Rectangle;
   private upArrow?: Phaser.GameObjects.Image;
   private downArrow?: Phaser.GameObjects.Image;
-  private topRail?: Phaser.GameObjects.Rectangle;
-  private bottomRail?: Phaser.GameObjects.Rectangle;
+  private upZone?: Phaser.GameObjects.Zone;
+  private downZone?: Phaser.GameObjects.Zone;
 
   constructor() {
     super({ key: 'MobileControls' });
@@ -24,59 +24,56 @@ export default class MobileControlsScene extends Phaser.Scene {
   private create(): void {
     const w = this.scale.width;
     const h = this.scale.height;
-    const railH = Math.round(h * MOBILE_RAIL_RATIO);
+    const barH = Math.round(h * MOBILE_BAR_RATIO);
+    const barY = h - barH / 2;
+    // Leave bottom-left clear for the mute button on SceneLevel.
+    const muteSafe = 110;
+    const barX = muteSafe;
+    const barW = w - muteSafe;
+    const halfW = barW / 2;
 
     this.cameras.main.setBackgroundColor('rgba(0,0,0,0)');
 
-    // Top = upper lane (sky / city band). Full width — easy to hit.
-    this.topRail = this.add.rectangle(w / 2, railH / 2, w, railH, 0x000000, 0.22)
-      .setStrokeStyle(1, 0xffffff, 0.2)
-      .setInteractive()
+    this.bar = this.add.rectangle(barX + barW / 2, barY, barW, barH, 0x000000, 0.35)
+      .setStrokeStyle(2, 0xffffff, 0.22)
       .setDepth(LayerIDX.GUI);
 
-    // Bottom = lower lane. Leave bottom-left clear for the mute button.
-    const muteSafe = 120;
-    const bottomW = w - muteSafe;
-    this.bottomRail = this.add.rectangle(
-      muteSafe + bottomW / 2,
-      h - railH / 2,
-      bottomW,
-      railH,
-      0x000000,
-      0.22
-    )
-      .setStrokeStyle(1, 0xffffff, 0.2)
+    // Left half of the bar = upper lane, right half = lower lane.
+    this.upZone = this.add.zone(barX + halfW / 2, barY, halfW, barH)
       .setInteractive()
-      .setDepth(LayerIDX.GUI);
+      .setDepth(LayerIDX.GUI + 1);
 
-    this.upArrow = this.add.image(w / 2, railH * 0.5, sourceModel.spriteArrowsPlay.mappingKey, ControlState.PENDING)
+    this.downZone = this.add.zone(barX + halfW + halfW / 2, barY, halfW, barH)
+      .setInteractive()
+      .setDepth(LayerIDX.GUI + 1);
+
+    this.upArrow = this.add.image(barX + halfW / 2, barY, sourceModel.spriteArrowsPlay.mappingKey, ControlState.PENDING)
       .setAngle(90)
-      .setScale(1.35)
-      .setAlpha(0.7)
-      .setDepth(LayerIDX.GUI + 1);
+      .setScale(1.45)
+      .setAlpha(0.8)
+      .setDepth(LayerIDX.GUI + 2);
 
-    this.downArrow = this.add.image(
-      muteSafe + bottomW / 2,
-      h - railH * 0.5,
-      sourceModel.spriteArrowsPlay.mappingKey,
-      ControlState.PENDING
-    )
+    this.downArrow = this.add.image(barX + halfW + halfW / 2, barY, sourceModel.spriteArrowsPlay.mappingKey, ControlState.PENDING)
       .setAngle(-90)
-      .setScale(1.35)
-      .setAlpha(0.7)
+      .setScale(1.45)
+      .setAlpha(0.8)
+      .setDepth(LayerIDX.GUI + 2);
+
+    // Subtle divider between the two halves.
+    this.add.rectangle(barX + halfW, barY, 2, barH * 0.7, 0xffffff, 0.25)
       .setDepth(LayerIDX.GUI + 1);
 
-    this.topRail.on('pointerdown', () => this.press('up'));
-    this.bottomRail.on('pointerdown', () => this.press('down'));
+    this.upZone.on('pointerdown', () => this.press('up'));
+    this.downZone.on('pointerdown', () => this.press('down'));
 
     const releaseUp = () => this.release('up');
     const releaseDown = () => this.release('down');
-    this.topRail.on('pointerup', releaseUp);
-    this.topRail.on('pointerout', releaseUp);
-    this.topRail.on('pointerupoutside', releaseUp);
-    this.bottomRail.on('pointerup', releaseDown);
-    this.bottomRail.on('pointerout', releaseDown);
-    this.bottomRail.on('pointerupoutside', releaseDown);
+    this.upZone.on('pointerup', releaseUp);
+    this.upZone.on('pointerout', releaseUp);
+    this.upZone.on('pointerupoutside', releaseUp);
+    this.downZone.on('pointerup', releaseDown);
+    this.downZone.on('pointerout', releaseDown);
+    this.downZone.on('pointerupoutside', releaseDown);
 
     this.game.events.on('mobileControlsEnabled', this.setEnabled, this);
     this.events.once('shutdown', () => {
@@ -86,17 +83,18 @@ export default class MobileControlsScene extends Phaser.Scene {
 
   private setEnabled = (enabled: boolean): void => {
     this.enabled = enabled;
-    this.topRail?.setVisible(enabled).setActive(enabled);
-    this.bottomRail?.setVisible(enabled).setActive(enabled);
+    this.bar?.setVisible(enabled);
     this.upArrow?.setVisible(enabled);
     this.downArrow?.setVisible(enabled);
+    this.upZone?.setVisible(enabled).setActive(enabled);
+    this.downZone?.setVisible(enabled).setActive(enabled);
 
     if (!enabled) {
-      this.topRail?.disableInteractive();
-      this.bottomRail?.disableInteractive();
+      this.upZone?.disableInteractive();
+      this.downZone?.disableInteractive();
     } else {
-      this.topRail?.setInteractive();
-      this.bottomRail?.setInteractive();
+      this.upZone?.setInteractive();
+      this.downZone?.setInteractive();
     }
   };
 
@@ -106,9 +104,8 @@ export default class MobileControlsScene extends Phaser.Scene {
     }
 
     const arrow = side === 'up' ? this.upArrow : this.downArrow;
-    const rail = side === 'up' ? this.topRail : this.bottomRail;
     arrow?.setFrame(ControlState.SELECTED).setAlpha(1);
-    rail?.setFillStyle(0x222222, 0.4);
+    this.bar?.setFillStyle(0x111111, 0.5);
 
     this.sound.play(sourceModel.soundButton.mappingKey);
     this.game.events.emit(side === 'up' ? 'mobileLaneUp' : 'mobileLaneDown');
@@ -116,8 +113,7 @@ export default class MobileControlsScene extends Phaser.Scene {
 
   private release(side: 'up' | 'down'): void {
     const arrow = side === 'up' ? this.upArrow : this.downArrow;
-    const rail = side === 'up' ? this.topRail : this.bottomRail;
-    arrow?.setFrame(ControlState.PENDING).setAlpha(0.7);
-    rail?.setFillStyle(0x000000, 0.22);
+    arrow?.setFrame(ControlState.PENDING).setAlpha(0.8);
+    this.bar?.setFillStyle(0x000000, 0.35);
   }
 }
