@@ -265,8 +265,10 @@ export default class SceneLevel extends Phaser.Scene {
     }
   }
 
-  /** Top/bottom tap rails via overlay — full FOV, lanes map to up/down. */
+  /** Bottom lane bar via overlay — full FOV, left=up / right=down. */
   private setupMobileControls(): void {
+    // Always fully stop + relaunch so AGAIN gets a fresh enabled overlay
+    // (Phaser reuses the scene instance; wake alone left enabled=false).
     this.teardownMobileControls();
 
     this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
@@ -274,12 +276,8 @@ export default class SceneLevel extends Phaser.Scene {
     this.game.events.on('mobileLaneUp', this.handleMobileLaneUp, this);
     this.game.events.on('mobileLaneDown', this.handleMobileLaneDown, this);
 
-    if (this.scene.isActive('MobileControls') || this.scene.isSleeping('MobileControls')) {
-      this.scene.wake('MobileControls');
-      this.game.events.emit('mobileControlsEnabled', true);
-    } else {
-      this.scene.launch('MobileControls');
-    }
+    this.scene.launch('MobileControls');
+    this.game.events.emit('mobileControlsEnabled', true);
   }
 
   private teardownMobileControls = (): void => {

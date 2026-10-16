@@ -22,6 +22,9 @@ export default class MobileControlsScene extends Phaser.Scene {
   }
 
   private create(): void {
+    // Scene instances are reused across AGAIN — reset after game-over disable.
+    this.enabled = true;
+
     const w = this.scale.width;
     const h = this.scale.height;
     const barH = Math.round(h * MOBILE_BAR_RATIO);
