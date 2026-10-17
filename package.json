@@ -8,6 +8,7 @@
     "start": "NODE_OPTIONS=--openssl-legacy-provider webpack-dev-server --config webpack/webpack.dev.js",
     "build": "NODE_OPTIONS=--openssl-legacy-provider webpack --config webpack/webpack.prod.js",
     "bundle": "npm run build",
+    "typecheck": "tsc --noEmit",
     "serve": "serve dist"
   },
   "keywords": [
@@ -47,7 +48,7 @@
     "workbox-webpack-plugin": "^5.1.3"
   },
   "dependencies": {
-    "phaser": "^3.24.1",
-    "@types/node": "12.12.2"
+    "@types/node": "12.12.2",
+    "phaser": "^3.90.0"
   }
 }
