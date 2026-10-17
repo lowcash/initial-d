@@ -1,4 +1,4 @@
-import Common, { LayerIDX } from '../_common/common'
+import Common, { LayerIDX, GameEvent } from '../_common/common'
 import HUD from '../HUD';
 
 export enum AppendFrom { LEFT, RIGHT };
@@ -101,9 +101,7 @@ export class ScoreHUDExtended extends ScoreHUD {
             this.handleScoreChanged(totalScore, changedByValue);
         };
 
-        // Prior runs left handlers bound to destroyed labels — clear channel first.
-        this.scene.events.off('onScoreChanged');
-        this.scene.events.on('onScoreChanged', this.onScoreChangedHandler);
+        this.scene.events.on(GameEvent.SCORE_CHANGED, this.onScoreChangedHandler);
     }
 
     private handleScoreChanged(totalScore: number, changedByValue?: number): void {

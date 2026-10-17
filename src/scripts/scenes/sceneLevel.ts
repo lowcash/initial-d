@@ -11,7 +11,7 @@ import Vehicle from '../objects/traffic/vehicle'
 import Traffic from '../objects/traffic/traffic'
 import Reward from '../objects/reward/reward';
 import ScoreHUD, { AppendFrom, ScoreHUDExtended } from '../objects/reward/hud';
-import Common, { LayerIDX } from '../objects/_common/common';
+import Common, { LayerIDX, GameEvent } from '../objects/_common/common';
 import AudioHelper from '../objects/_common/audioHelper';
 import ScoreStorage from '../objects/_common/scoreStorage';
 import BackgroundTileSpriteExtended from '../objects/tilesprites/backgroundTileSpriteExtended';
@@ -87,7 +87,7 @@ export default class SceneLevel extends Phaser.Scene {
     moveSpeed: number;
 
     speedUp: {
-      func?: any;
+      timer?: Phaser.Time.TimerEvent;
       byValue: number;
       eachMillisec: number;
     };
@@ -157,8 +157,9 @@ export default class SceneLevel extends Phaser.Scene {
   }
 
   private create(): void {
-    // Scene instance is reused across runs; clear stale refs from prior play.
-    clearInterval(this.map.speedUp.func);
+    // Scene instance is reused across runs; clear stale refs and handlers from prior play.
+    this.map.speedUp.timer = undefined;
+    Common.clearGameEvents(this);
     this.city.tileSprite = undefined;
     this.hill.tileSprite = undefined;
     this.clouds.tileSprite = undefined;
@@ -181,14 +182,13 @@ export default class SceneLevel extends Phaser.Scene {
     new MuteButton(this);
     AudioHelper.playBgm(this, sourceModel.soundBgm.mappingKey);
 
-    this.cursors = this.input.keyboard.createCursorKeys();
+    this.cursors = this.input.keyboard?.createCursorKeys();
 
-    this.events.off('onPlayerCollided');
-    this.events.on('onPlayerCollided', (id: string) => {
+    this.events.on(GameEvent.PLAYER_COLLIDED, (id: string) => {
       this.handlePlayerCollided(id);
     });
 
-    this.events.once('shutdown', this.teardownMobileControls, this);
+    this.events.once('shutdown', this.handleShutdown, this);
   }
 
   private prepareObjects(): void {
@@ -208,9 +208,13 @@ export default class SceneLevel extends Phaser.Scene {
     this.map.object?.changeSpeed(this.map.moveSpeed);
 
     // Start speeding up the map
-    this.map.speedUp.func = setInterval(() => {
-      this.map.object?.changeSpeed(this.map.object.getSpeed() - this.map.speedUp.byValue);
-    }, this.map.speedUp.eachMillisec);
+    this.map.speedUp.timer = this.time.addEvent({
+      delay: this.map.speedUp.eachMillisec,
+      loop: true,
+      callback: () => {
+        this.map.object?.changeSpeed(this.map.object.getSpeed() - this.map.speedUp.byValue);
+      }
+    });
   }
 
   public update(time: number, delta: number): void {
@@ -225,23 +229,25 @@ export default class SceneLevel extends Phaser.Scene {
       this.traffic.player?.turnRight();
     }
 
-    this.city.tileSprite?.move();
-    this.hill.tileSprite?.move();
-    this.nearForest.tileSprite?.move();
-    this.farForest.tileSprite?.move();
-    this.clouds.tileSprite?.move();
-    this.farthestForest.tileSprite?.move();
-    this.map.object?.move();
-    this.reward.object?.move();
+    const dt = Common.getFrameScale(delta);
+
+    this.city.tileSprite?.move(dt);
+    this.hill.tileSprite?.move(dt);
+    this.nearForest.tileSprite?.move(dt);
+    this.farForest.tileSprite?.move(dt);
+    this.clouds.tileSprite?.move(dt);
+    this.farthestForest.tileSprite?.move(dt);
+    this.map.object?.move(dt);
+    this.reward.object?.move(dt);
     this.reward.object?.addDriveScore(delta);
-    this.traffic.object?.move();
+    this.traffic.object?.move(dt);
   }
 
   private handlePlayerCollided(id: string): void {
     if (!this.isGameOver) {
       this.isGameOver = true;
 
-      clearInterval(this.map.speedUp.func);
+      this.map.speedUp.timer?.remove(false);
 
       this.map?.object?.stop(this.map?.speedUp.byValue);
 
@@ -263,6 +269,12 @@ export default class SceneLevel extends Phaser.Scene {
 
       this.showGameOverOverlay(earnedPoints);
     }
+  }
+
+  private handleShutdown(): void {
+    this.map.speedUp.timer?.remove(false);
+    Common.clearGameEvents(this);
+    this.teardownMobileControls();
   }
 
   /** Bottom lane bar via overlay — full FOV, left=up / right=down. */

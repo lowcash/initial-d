@@ -1,4 +1,4 @@
-import { Range } from '../_common/common';
+import { Range, GameEvent } from '../_common/common';
 import TypeGuardHelper from '../_common/typeGuardHelper';
 import { SpriteMappingSized } from '../_common/mappingHelper';
 
@@ -80,15 +80,10 @@ export default class Reward implements IMovable {
 
         this.generateReward(numCoinsToGenerate);
 
-        // Coin events are Reward-only — wipe by name so prior restart handlers cannot
-        // touch destroyed state (that freeze on first pickup after AGAIN).
-        this.scene.events.off('onCoinCollided');
-        this.scene.events.off('onCoinDestroyed');
-        this.scene.events.on('onCoinCollided', this.onCoinCollidedHandler);
-        this.scene.events.on('onCoinDestroyed', this.onCoinDestroyedHandler);
-
-        // Shared with map/traffic/background — never wipe the whole channel.
-        this.scene.events.on('onMapSpeedChanged', this.onMapSpeedChangedHandler);
+        // Stale handlers from earlier runs are cleared by Common.clearGameEvents (scene create/shutdown).
+        this.scene.events.on(GameEvent.COIN_COLLIDED, this.onCoinCollidedHandler);
+        this.scene.events.on(GameEvent.COIN_DESTROYED, this.onCoinDestroyedHandler);
+        this.scene.events.on(GameEvent.MAP_SPEED_CHANGED, this.onMapSpeedChangedHandler);
     }
 
     public getEarnedPoints(): number {
@@ -124,7 +119,7 @@ export default class Reward implements IMovable {
             const gained = Math.floor(this.driveScoreCarry);
             this.driveScoreCarry -= gained;
             this.earnedPoints += gained;
-            this.scene.events.emit('onScoreChanged', this.earnedPoints, gained);
+            this.scene.events.emit(GameEvent.SCORE_CHANGED, this.earnedPoints, gained);
         }
     }
 
@@ -178,17 +173,11 @@ export default class Reward implements IMovable {
             );
 
         this.coins.spriteMapper[this.coins.numCreatedCoins.toString()] = this.coin.sprite;
-    }
 
-    public registerCoins(): void {
-        // Rebuild group without destroying live sprites (replacement spawn path).
-        if (this.coins.group) {
-            this.coins.group.clear(false, false);
+        if (!this.coins.group) {
+            this.coins.group = this.scene.physics.add.group();
         }
-
-        this.coins.group = this.scene.physics.add.group(
-            Object.keys(this.coins.spriteMapper).map(c => this.coins.spriteMapper[c])
-        );
+        this.coins.group.add(this.coin.sprite);
     }
 
     public generateRandomCoins(numCoins: number, range: Range): void {
@@ -202,12 +191,10 @@ export default class Reward implements IMovable {
 
             this.coins.numCreatedCoins++;
         }
-
-        this.registerCoins();
     }
 
-    public move(): void {
-        this.coins.group?.incX(this.speed);
+    public move(dt: number = 1): void {
+        this.coins.group?.incX(this.speed * dt);
     }
 
     private clearReward(): void {
@@ -219,7 +206,7 @@ export default class Reward implements IMovable {
         this.earnedPoints = 0;
         this.driveScoreCarry = 0;
 
-        this.scene.events.emit('onScoreChanged', this.earnedPoints);
+        this.scene.events.emit(GameEvent.SCORE_CHANGED, this.earnedPoints);
 
         this.coins.group?.clear(true, true);
         this.coins.group = undefined;
@@ -254,7 +241,7 @@ export default class Reward implements IMovable {
         this.coins.sound?.play();
 
         this.earnedPoints += points;
-        this.scene.events.emit('onScoreChanged', this.earnedPoints, points);
+        this.scene.events.emit(GameEvent.SCORE_CHANGED, this.earnedPoints, points);
 
         const sprite = coinObject.getSprite();
         // Drop from the scrolling group — collect tween carries road speed itself

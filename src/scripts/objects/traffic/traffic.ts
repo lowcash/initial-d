@@ -1,4 +1,4 @@
-import { Range, Direction, LayerIDX } from '../_common/common';
+import { Range, Direction, LayerIDX, GameEvent } from '../_common/common';
 import TypeGuardHelper from '../_common/typeGuardHelper';
 import { SpriteMapping } from '../_common/mappingHelper';
 
@@ -55,13 +55,15 @@ export default class Traffic {
                 .setOrigin(0.5, 0.75)
                 .setVisible(false);
 
-        this.scene.anims.create({
-            key: this.explosion.key,
-            frames: this.scene.anims.generateFrameNumbers(this.explosion.mappingKey, {}),
-            frameRate: 15,
-            repeat: 0,
-            hideOnComplete: true
-        });
+        if (!this.scene.anims.exists(this.explosion.key)) {
+            this.scene.anims.create({
+                key: this.explosion.key,
+                frames: this.scene.anims.generateFrameNumbers(this.explosion.mappingKey, {}),
+                frameRate: 15,
+                repeat: 0,
+                hideOnComplete: true
+            });
+        }
 
         if (this.scene.cache.audio.get(this.explosion.soundKey)) {
             this.explosion.sound = this.scene.sound.add(this.explosion.soundKey, {});
@@ -73,12 +75,8 @@ export default class Traffic {
         // ------------------------------ Init vehicles ------------------------------ //
         Object.values(VehicleType).map(v => this.initVehicle(v));
 
-        this.scene.events.on('onVehicleCollided', (id: string) => {
-            this.handleVehicleCollided(id);
-        });
-        this.scene.events.on('onVehicleDestroyed', (id: string) => {
-            this.handleVehicleDestroyed(id);
-        });
+        this.scene.events.on(GameEvent.VEHICLE_COLLIDED, this.handleVehicleCollided, this);
+        this.scene.events.on(GameEvent.VEHICLE_DESTROYED, this.handleVehicleDestroyed, this);
     }
 
     public generateTraffic(): void {
@@ -163,10 +161,10 @@ export default class Traffic {
         );
     }
 
-    public move(): void {
-        for (const v of Object.keys(this.vehicles.objectMapper).map(c => this.vehicles.objectMapper[c])) {
-            if (v.getSprite().body !== this.player?.getSprite().body) {
-                v.move();
+    public move(dt: number = 1): void {
+        for (const v of Object.values(this.vehicles.objectMapper)) {
+            if (v !== this.player) {
+                v.move(dt);
             }
         }
     }
@@ -201,8 +199,14 @@ export default class Traffic {
     }
 
     private initVehicleAnims(vehicleType: VehicleType, direction: Direction) {
+        const key = `${vehicleType.toString()}_${direction.toString()}`;
+
+        if (this.scene.anims.exists(key)) {
+            return;
+        }
+
         this.scene.anims.create({
-            key: `${vehicleType.toString()}_${direction.toString()}`,
+            key,
             frames: [{ key: 'atlas_vehicles', frame: `${vehicleType.toString()}/${direction}` }],
             frameRate: 0
         });
@@ -232,7 +236,7 @@ export default class Traffic {
 
                     delete this.vehicles.objectMapper[id];
 
-                    this.scene.events.emit('onPlayerCollided', id);
+                    this.scene.events.emit(GameEvent.PLAYER_COLLIDED, id);
                 }
             }
         }
@@ -241,8 +245,6 @@ export default class Traffic {
     private handleVehicleDestroyed(id: string): void {
         // Destroy vehicles that are out off the map
         if (this.vehicles.objectMapper[id]) {
-            console.log(`Vehicle #${id} is history!`);
-
             this.availableLanes.push(this.vehicles.objectMapper[id].getLane());
 
             delete this.vehicles.objectMapper[id];

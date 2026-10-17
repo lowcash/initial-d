@@ -1,4 +1,4 @@
-import Common from '../_common/common'
+import Common, { GameEvent } from '../_common/common'
 
 import IMovable from '../interfaces/IMovable'
 
@@ -23,6 +23,8 @@ export default class Map implements IMovable {
 
     private mapOffset: Phaser.Math.Vector2;
 
+    private stopTimer?: Phaser.Time.TimerEvent;
+
     speed: number = 0;
 
     constructor(scene: Phaser.Scene, depthLayer: number, mapStartPos: Phaser.Math.Vector2, numChunkToGenerate: number) {
@@ -34,6 +36,8 @@ export default class Map implements IMovable {
 
         this.mapOffset = mapStartPos;
 
+        this.road.group = this.scene.physics.add.group();
+
         this.generateMap(numChunkToGenerate);
     }
 
@@ -43,12 +47,10 @@ export default class Map implements IMovable {
         for (let i = 0; i < numChunkToGenerate; ++i) {
             this.appendChunk(Map.getRandomRoadChunk());
         }
-
-        this.registerChunks();
     }
 
-    public move(): void {
-        this.road.group?.incX(this.speed);
+    public move(dt: number = 1): void {
+        this.road.group?.incX(this.speed * dt);
 
         // If the map suddenly stops, there may be an empty/blank space
         // Remove the first chunk after the second chunk is out off the screen
@@ -56,27 +58,34 @@ export default class Map implements IMovable {
             this.shiftChunk();
 
             this.appendChunk(Map.getRandomRoadChunk());
-
-            this.registerChunks();
         }
     }
 
-    public async stop(bySpeed: number): Promise<void> {
+    /** Skid to a halt: small rebound that decays by `bySpeed` every 60 ms. Scene timer, so a restart cancels it. */
+    public stop(bySpeed: number): void {
+        this.stopTimer?.remove(false);
+
         this.changeSpeed(1);
 
-        for (; (this.speed) > 0;) {
-            this.changeSpeed(this.speed - bySpeed);
+        this.stopTimer = this.scene.time.addEvent({
+            delay: 60,
+            loop: true,
+            callback: () => {
+                if (this.speed > 0) {
+                    this.changeSpeed(this.speed - bySpeed);
+                    return;
+                }
 
-            await Common.delay(60);
-        }
-
-        this.changeSpeed(0);
+                this.changeSpeed(0);
+                this.stopTimer?.remove(false);
+            }
+        });
     }
 
     public changeSpeed(speed: number): void {
         this.speed = speed;
 
-        this.scene.events.emit('onMapSpeedChanged', this.speed);
+        this.scene.events.emit(GameEvent.MAP_SPEED_CHANGED, this.speed);
     }
 
     public getSpeed(): number {
@@ -120,6 +129,7 @@ export default class Map implements IMovable {
         this.mapOffset.x = this.defaultMapOffset.x;
         this.mapOffset.y = this.defaultMapOffset.y;
 
+        this.stopTimer?.remove(false);
         this.road.group?.clear(true, true);
 
         this.road.properties = [];
@@ -128,8 +138,6 @@ export default class Map implements IMovable {
 
     private shiftChunk(): void {
         const firstRoadChunk = this.road.images.shift() as Phaser.GameObjects.Image;
-
-        // this.road.group?.remove(firstRoadChunk);
 
         firstRoadChunk.destroy();
 
@@ -144,19 +152,16 @@ export default class Map implements IMovable {
             this.mapOffset.y = lastChunk.y;
         }
 
-        this.road.images.push(
-            this.scene.add.image(
-                this.mapOffset.x,
-                this.mapOffset.y,
-                chunk.type)
-                .setOrigin(0.0, 1.0)
-                .setDepth(this.depthLayer)
-        );
+        const image = this.scene.add.image(
+            this.mapOffset.x,
+            this.mapOffset.y,
+            chunk.type)
+            .setOrigin(0.0, 1.0)
+            .setDepth(this.depthLayer);
+
+        this.road.images.push(image);
+        this.road.group?.add(image);
 
         this.road.properties.push(chunk);
-    }
-
-    private registerChunks(): void {
-        this.road.group = this.scene.physics.add.group(this.road.images);
     }
 };

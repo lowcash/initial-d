@@ -1,4 +1,4 @@
-import Common, { Range, Direction } from '../_common/common'
+import Common, { Range, Direction, GameEvent } from '../_common/common'
 
 import ICollidable from '../interfaces/ICollidable'
 import IMovable from '../interfaces/IMovable'
@@ -65,6 +65,10 @@ export default class Vehicle implements ICollidable, IMovable {
     private isAlive: boolean = true;
     private isTurning: boolean = false;
     private canTurn: boolean = true;
+
+    private turnTimer?: Phaser.Time.TimerEvent;
+
+    private readonly onMapSpeedChangedHandler: (speed: number) => void;
     
     speed: number;
 
@@ -89,23 +93,25 @@ export default class Vehicle implements ICollidable, IMovable {
             this.registerCollision(c);
         }
 
-        this.watchStillAlive();
-
-        this.scene.events.on('onMapSpeedChanged', (speed: number) => {
-            this.handleMapSpeedChanged(speed);
-        });
+        this.onMapSpeedChangedHandler = (speed: number) => this.handleMapSpeedChanged(speed);
+        this.scene.events.on(GameEvent.MAP_SPEED_CHANGED, this.onMapSpeedChangedHandler);
     }
 
     public registerCollision(collideWith: Phaser.Physics.Arcade.Sprite): void {
         this.scene.physics.add.overlap(this.sprite, collideWith, () => {
-            this.scene.events.emit('onVehicleCollided', this.id );
+            this.scene.events.emit(GameEvent.VEHICLE_COLLIDED, this.id);
         });
     }
 
     public destroyVehicle(): void {
-        this.sprite.destroy();
-
         this.isAlive = false;
+
+        this.turnTimer?.remove(false);
+        this.scene.events.off(GameEvent.MAP_SPEED_CHANGED, this.onMapSpeedChangedHandler);
+
+        if (this.sprite.active) {
+            this.sprite.destroy();
+        }
     }
 
     public getLane(): number {
@@ -120,8 +126,19 @@ export default class Vehicle implements ICollidable, IMovable {
         return this.gridPos;
     }
 
-    public move(): void {
-        this.sprite.setPosition(this.sprite.x + this.mapSpeed + this.speed, this.sprite.y);
+    public move(dt: number = 1): void {
+        if (!this.isAlive) {
+            return;
+        }
+
+        this.sprite.setPosition(this.sprite.x + (this.mapSpeed + this.speed) * dt, this.sprite.y);
+
+        // Left the screen — free the lane and let Traffic spawn a replacement.
+        if (this.sprite.x < -this.sprite.width) {
+            this.destroyVehicle();
+
+            this.scene.events.emit(GameEvent.VEHICLE_DESTROYED, this.id);
+        }
     }
 
     public setEnableTurn(enableTurn: boolean): void {
@@ -162,75 +179,49 @@ export default class Vehicle implements ICollidable, IMovable {
         return this.depthLayer + this.map.getNumRoadChunkLanes(this.gridPos.x) - laneY;
     }
 
-    private async turn(direction: Direction, velocity: number): Promise<void> {
-        this.sprite?.anims.play(`${this.type.toString()}_${direction}`, true);
+    private turn(direction: Direction, velocity: number): void {
+        const isLeft = direction === Direction.LEFT;
+        const targetLane = this.gridPos.y + (isLeft ? 1 : -1);
 
-        if (this.sprite) {
-            const fromLane = this.gridPos.y;
-            const fromDepth = this.laneDepth(fromLane);
+        const fromDepth = this.laneDepth(this.gridPos.y);
+        const position: number = this.map.getLanePosition(this.gridPos.x, targetLane);
+        const scale: number = this.map.getPerspectiveScale(this.gridPos.x, targetLane);
 
-            switch (direction) {
-                case Direction.LEFT: {
-                    // Moving to upper lane — slip under (lower z) during the cut.
-                    this.sprite.setDepth(fromDepth - 1);
-                    this.sprite.setVelocityY(-velocity);
+        this.sprite.anims.play(`${this.type.toString()}_${direction}`, true);
 
-                    const position: number = this.map.getLanePosition(this.gridPos.x, this.gridPos.y + 1);
-                    const scale: number = this.map.getPerspectiveScale(this.gridPos.x, this.gridPos.y + 1);
+        // Left = upper lane: slip under (lower z) during the cut. Right = lower lane: pass over.
+        this.sprite.setDepth(isLeft ? fromDepth - 1 : fromDepth + 1);
+        this.sprite.setVelocityY(isLeft ? -velocity : velocity);
 
-                    for (let i = 0; this.sprite.y > position; ++i) {
-                        this.sprite.setScale((this.sprite.y / position) * scale);
+        const isArrived = (): boolean => isLeft ? this.sprite.y <= position : this.sprite.y >= position;
 
-                        await Common.delay(60, i);
-                    }
-
-                    this.sprite.y = position;
-
-                    break;
-                }
-
-                case Direction.RIGHT: {
-                    // Moving to lower lane — pass over (higher z) during the cut.
-                    this.sprite.setDepth(fromDepth + 1);
-                    this.sprite.setVelocityY(velocity);
-
-                    const position: number = this.map.getLanePosition(this.gridPos.x, this.gridPos.y - 1);
-                    const scale: number = this.map.getPerspectiveScale(this.gridPos.x, this.gridPos.y - 1);
-
-                    for (let i = 0; this.sprite.y < position; ++i) {
-                        this.sprite.setScale((this.sprite.y / position) * scale);
-
-                        await Common.delay(60, i);
-                    }
-
-                    this.sprite.y = position;
-
-                    break;
-                }
+        const step = (): void => {
+            if (!this.isAlive || !this.sprite.active) {
+                this.turnTimer?.remove(false);
+                return;
             }
-        }
 
-        this.sprite
-            .setVelocityY(0)
-            .setDepth(this.laneDepth(this.gridPos.y))
-            .anims.play(`${this.type.toString()}_${Direction.FRONT.toString()}`, true);
+            if (!isArrived()) {
+                this.sprite.setScale((this.sprite.y / position) * scale);
+                return;
+            }
 
-        this.isTurning = false;
+            this.turnTimer?.remove(false);
+
+            this.sprite.y = position;
+            this.sprite
+                .setVelocityY(0)
+                .setDepth(this.laneDepth(this.gridPos.y))
+                .anims.play(`${this.type.toString()}_${Direction.FRONT.toString()}`, true);
+
+            this.isTurning = false;
+        };
+
+        // Scene timer instead of async/await: cancelled automatically when the scene shuts down.
+        this.turnTimer = this.scene.time.addEvent({ delay: 60, loop: true, callback: step });
     }
 
     private handleMapSpeedChanged(mapSpeed: number) {
         this.mapSpeed = mapSpeed;
-    }
-
-    private async watchStillAlive(): Promise<void> {
-        while (this.isAlive) {
-            if (this.sprite.x < -this.sprite.width) {
-                this.destroyVehicle();
-            }
-
-            await Common.delay(60, 0);
-        }
-
-        this.scene.events.emit('onVehicleDestroyed', this.id );
     }
 }

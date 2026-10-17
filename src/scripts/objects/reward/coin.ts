@@ -1,4 +1,5 @@
 import ICollidable from '../interfaces/ICollidable';
+import { GameEvent } from '../_common/common';
 
 export default class Coin implements ICollidable {
     private readonly scene: Phaser.Scene;
@@ -45,7 +46,7 @@ export default class Coin implements ICollidable {
                 return;
             }
 
-            this.scene.events.emit('onCoinCollided', this.id);
+            this.scene.events.emit(GameEvent.COIN_COLLIDED, this.id);
         });
     }
 
@@ -80,7 +81,7 @@ export default class Coin implements ICollidable {
         }
 
         if (!this.isCollecting) {
-            this.scene.events.emit('onCoinDestroyed', this.id);
+            this.scene.events.emit(GameEvent.COIN_DESTROYED, this.id);
         }
     }
 

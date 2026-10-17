@@ -53,7 +53,7 @@ export default class BackgroundTileSprite extends Phaser.GameObjects.TileSprite 
          this.speed = speed;
      }
 
-     public move(): void {
-         this.tilePositionX += this.speed;
+     public move(dt: number = 1): void {
+         this.tilePositionX += this.speed * dt;
      }
   }

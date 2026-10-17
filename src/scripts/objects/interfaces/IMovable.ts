@@ -1,5 +1,6 @@
 export default interface IMovable {
     speed: number;
 
-    move(): void;
+    /** `dt` is the frame scale from Common.getFrameScale (1.0 at 60 fps). */
+    move(dt?: number): void;
 };

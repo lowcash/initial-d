@@ -1,10 +1,15 @@
 export default class Common {
-    static delay(milliseconds: number, count?: number): Promise<number> {
-        return new Promise<number>(resolve => {
-            setTimeout(() => {
-                resolve(count);
-            }, milliseconds);
-        });
+    /** Frame-rate independent multiplier: 1.0 at 60 fps, clamped so tab-switch spikes cannot teleport objects. */
+    static getFrameScale(deltaMs: number): number {
+        return Math.min(deltaMs, 50) / (1000 / 60);
+    }
+
+    /**
+     * Scene event emitters outlive scene restarts, so every custom event must be
+     * dropped on create/shutdown or handlers of previous runs pile up.
+     */
+    static clearGameEvents(scene: Phaser.Scene): void {
+        Object.values(GameEvent).forEach(e => scene.events.off(e));
     }
 
     static fillZeroPadding(number: number, size: number): string {
@@ -32,6 +37,16 @@ export default class Common {
         ];
     }
 }
+
+export enum GameEvent {
+    MAP_SPEED_CHANGED = 'onMapSpeedChanged',
+    VEHICLE_COLLIDED = 'onVehicleCollided',
+    VEHICLE_DESTROYED = 'onVehicleDestroyed',
+    PLAYER_COLLIDED = 'onPlayerCollided',
+    COIN_COLLIDED = 'onCoinCollided',
+    COIN_DESTROYED = 'onCoinDestroyed',
+    SCORE_CHANGED = 'onScoreChanged'
+};
 
 export type Range = {
     from: number;

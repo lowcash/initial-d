@@ -5,8 +5,14 @@ const MUTE_STORAGE_KEY = 'Muted';
  * and Phaser's global sound manager.
  */
 export default class AudioHelper {
+  private static sessionMuted = false;
+
   static isMuted(): boolean {
-    return localStorage.getItem(MUTE_STORAGE_KEY) === '1';
+    try {
+      return localStorage.getItem(MUTE_STORAGE_KEY) === '1';
+    } catch {
+      return AudioHelper.sessionMuted;
+    }
   }
 
   static applyMute(scene: Phaser.Scene): void {
@@ -15,7 +21,12 @@ export default class AudioHelper {
 
   static toggleMute(scene: Phaser.Scene): boolean {
     const muted = !AudioHelper.isMuted();
-    localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0');
+    AudioHelper.sessionMuted = muted;
+    try {
+      localStorage.setItem(MUTE_STORAGE_KEY, muted ? '1' : '0');
+    } catch {
+      // storage unavailable — mute lasts for this session only
+    }
     scene.sound.mute = muted;
     return muted;
   }

@@ -165,6 +165,9 @@ export default class SceneMenu extends Phaser.Scene {
     this.vehicles.group = undefined;
     this.vehicles.mapping = {};
 
+    Common.clearGameEvents(this);
+    this.events.once('shutdown', () => Common.clearGameEvents(this));
+
     this.prepareMap();
     this.prepareBackground();
     this.prepareHero();
@@ -234,15 +237,17 @@ export default class SceneMenu extends Phaser.Scene {
     }
   }
 
-  public update(): void {
-    this.city.tileSprite?.move();
-    this.hill.tileSprite?.move();
-    this.clouds.tileSprite?.move();
-    this.nearForest.tileSprite?.move();
-    this.farForest.tileSprite?.move();
-    this.farthestForest.tileSprite?.move();
+  public update(time: number, delta: number): void {
+    const dt = Common.getFrameScale(delta);
 
-    this.map.object?.move();
+    this.city.tileSprite?.move(dt);
+    this.hill.tileSprite?.move(dt);
+    this.clouds.tileSprite?.move(dt);
+    this.nearForest.tileSprite?.move(dt);
+    this.farForest.tileSprite?.move(dt);
+    this.farthestForest.tileSprite?.move(dt);
+
+    this.map.object?.move(dt);
   }
 
   //#region Prepares

@@ -1,4 +1,4 @@
-import Map from '../map/map';
+import { GameEvent } from '../_common/common';
 import BackgroundTileSprite from './backgroundTileSprite'
 
 /**
@@ -12,9 +12,7 @@ export default class BackgroundTileSpriteExtended extends BackgroundTileSprite {
         
         this.defaultSpeed = speed;
 
-        this.scene.events.on('onMapSpeedChanged', (speed: number) => {
-            this.handleMapSpeedChanged(speed);
-        });
+        this.scene.events.on(GameEvent.MAP_SPEED_CHANGED, this.handleMapSpeedChanged, this);
     }
 
     private handleMapSpeedChanged(speed: number) {
