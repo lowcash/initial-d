@@ -5,6 +5,7 @@ import PreloadLevel from './scenes/preloadLevel'
 import SceneLevel from './scenes/sceneLevel'
 import MobileControlsScene from './scenes/mobileControlsScene'
 import FullscreenHelper from './objects/_common/fullscreenHelper'
+import ScaleHelper from './objects/_common/scaleHelper'
 
 const DEFAULT_WIDTH = 1280
 const DEFAULT_HEIGHT = 800
@@ -17,7 +18,9 @@ const config: Phaser.Types.Core.GameConfig = {
     mode: Phaser.Scale.FIT,
     autoCenter: Phaser.Scale.CENTER_BOTH,
     width: DEFAULT_WIDTH,
-    height: DEFAULT_HEIGHT
+    height: DEFAULT_HEIGHT,
+    // Parent size comes from CSS (incl. safe-area); don't let Phaser fight it.
+    expandParent: false
   },
   scene: [PreloadMenu, SceneMenu, PreloadLevel, SceneLevel, MobileControlsScene],
   physics: {
@@ -29,6 +32,9 @@ const config: Phaser.Types.Core.GameConfig = {
   }
 }
 
-FullscreenHelper.armOnFirstGesture()
+const game = new Phaser.Game(config)
 
-export default new Phaser.Game(config)
+ScaleHelper.bind(game)
+FullscreenHelper.armOnFirstGesture(game)
+
+export default game
