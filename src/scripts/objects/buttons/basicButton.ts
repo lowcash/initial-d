@@ -1,45 +1,54 @@
-import { Mapping } from '../_common/mappingHelper';
+import { Mapping } from '../_common/mappingHelper'
+import AudioHelper from '../_common/audioHelper'
 
 export interface BasicButtonMapping extends Mapping {
-    button?: BasicButton;
+  button?: BasicButton
 
-    screenOffsetMult?: Phaser.Math.Vector2;
+  screenOffsetMult?: Phaser.Math.Vector2
 
-    standartScale?: number;
-    actionScale?: number;
+  standartScale?: number
+  actionScale?: number
 
-    depth?: number;
-};
+  depth?: number
+}
 
 export default class BasicButton extends Phaser.GameObjects.Sprite {
-    private readonly buttonSound?: Phaser.Sound.BaseSound;
+  private readonly soundKey?: string
 
-    constructor(scene: Phaser.Scene, pos: Phaser.Math.Vector2, mappingKey: string, depth?: number, scale?: number, angleRotation?: number, soundKey?: string) {
-        super(scene, pos.x, pos.y, mappingKey);
+  constructor(
+    scene: Phaser.Scene,
+    pos: Phaser.Math.Vector2,
+    mappingKey: string,
+    depth?: number,
+    scale?: number,
+    angleRotation?: number,
+    soundKey?: string,
+  ) {
+    super(scene, pos.x, pos.y, mappingKey)
 
-        if (scale) {
-            this.setScale(scale);
-        }
+    if (scale) {
+      this.setScale(scale)
+    }
 
-        if (depth) {
-            this.setDepth(depth);
-        }
-        
-        if (angleRotation) {
-            this.setOrigin(0.5, 0.5);
-            this.setAngle(angleRotation);
-        }
+    if (depth) {
+      this.setDepth(depth)
+    }
 
-        if (soundKey) {
-            this.buttonSound = scene.sound.add(soundKey, {} );
-        }
+    if (angleRotation) {
+      this.setOrigin(0.5, 0.5)
+      this.setAngle(angleRotation)
+    }
 
-        this.setInteractive();
+    this.soundKey = soundKey
 
-        scene.add.existing(this);
-     }
+    this.setInteractive()
 
-     public playSound(): void {
-        this.buttonSound?.play();
-     }
+    scene.add.existing(this)
   }
+
+  public playSound(): void {
+    if (this.soundKey) {
+      AudioHelper.playSfx(this.scene, this.soundKey)
+    }
+  }
+}

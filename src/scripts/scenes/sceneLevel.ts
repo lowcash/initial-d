@@ -1,628 +1,413 @@
 import { sourceModel } from '../models/source'
 import { DeviceType, SettingsModel } from '../models/settings'
+import { LevelRunState } from '../models/runState'
+import { nextSpeed, SPEED_RAMP_INTERVAL_MS, SPEED_RAMP_PER_TICK, SPEED_START } from '../models/tuning'
 
-import BasicButton from '../objects/buttons/basicButton';
-import MuteButton from '../objects/buttons/muteButton';
-import { BackgroundTileSpriteMapping } from '../objects/tilesprites/backgroundTileSprite'
-import { HUDFrameSettings } from '../objects/HUD';
-
-import Map from '../objects/map/map'
-import Vehicle from '../objects/traffic/vehicle'
-import Traffic from '../objects/traffic/traffic'
-import Reward from '../objects/reward/reward';
-import ScoreHUD, { AppendFrom, ScoreHUDExtended } from '../objects/reward/hud';
-import Common, { LayerIDX, GameEvent } from '../objects/_common/common';
-import AudioHelper from '../objects/_common/audioHelper';
-import ScoreStorage from '../objects/_common/scoreStorage';
-import BackgroundTileSpriteExtended from '../objects/tilesprites/backgroundTileSpriteExtended';
+import BasicButton from '../objects/buttons/basicButton'
+import MuteButton from '../objects/buttons/muteButton'
+import Reward from '../objects/reward/reward'
+import ScoreHUD, { AppendFrom, ScoreHUDExtended } from '../objects/reward/hud'
+import Common, { LayerIDX, GameEvent } from '../objects/_common/common'
+import AudioHelper from '../objects/_common/audioHelper'
+import ScoreStorage from '../objects/_common/scoreStorage'
+import {
+  createBackgroundLayers,
+  MAP_DEFAULTS,
+  moveBackgroundLayers,
+  prepareMap,
+  prepareTraffic,
+  TRAFFIC_DEFAULTS,
+} from '../objects/background/backgroundLayers'
 
 export default class SceneLevel extends Phaser.Scene {
-  private readonly city: BackgroundTileSpriteMapping = {
-    mappingKey: sourceModel.imageCity.mappingKey,
-    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.35),
-    moveSpeed: -0.25,
-    depth: 0
-  };
+  private readonly gameOverLayout = {
+    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.38),
+    scale: 1.15,
+  }
 
-  private readonly hill: BackgroundTileSpriteMapping = {
-    mappingKey: sourceModel.imageHill.mappingKey,
-    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.65),
-    moveSpeed: -0.5,
-    depth: 0
-  };
+  private readonly rewardDefaults = {
+    fontSize: 38,
+    textPadding: 30,
+    color: 0x000000,
+    startNumCoins: 5,
+    zeroPadding: 6,
+    depth: MAP_DEFAULTS.depth,
+  }
 
-  private readonly clouds: BackgroundTileSpriteMapping = {
-    mappingKey: sourceModel.imageClouds.mappingKey,
-    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.12),
-    moveSpeed: -0.25,
-    innerScale: 1.25,
-    depth: 10
-  };
-
-  private readonly nearForest: BackgroundTileSpriteMapping = {
-    mappingKey: sourceModel.imageForest.mappingKey,
-    moveSpeed: -1.0,
-    innerScale: 1.3,
-    depth: 50,
-    origin: new Phaser.Math.Vector2(0.5, 1.0)
-  };
-
-  private readonly farForest: BackgroundTileSpriteMapping = {
-    mappingKey: sourceModel.imageForest.mappingKey,
-    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.72),
-    moveSpeed: -1.0,
-    innerScale: 0.7,
-    origin: new Phaser.Math.Vector2(0.5, 1.0),
-    depth: 8
-  };
-
-  private readonly farthestForest: BackgroundTileSpriteMapping = {
-    mappingKey: sourceModel.imageForest.mappingKey,
-    screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.72),
-    moveSpeed: -1.0,
-    innerScale: 0.5,
-    origin: new Phaser.Math.Vector2(0.5, 1.0),
-    depth: 7
-  };
-
-  private readonly gameOver: {
-    image?: Phaser.GameObjects.Image;
-    score?: Phaser.GameObjects.BitmapText;
-    againButton?: BasicButton;
-    menuButton?: BasicButton;
-    screenOffsetMult: Phaser.Math.Vector2;
-    scale: number;
-  } = {
-      screenOffsetMult: new Phaser.Math.Vector2(0.5, 0.38),
-      scale: 1.15
-    };
-
-  private readonly map: {
-    object?: Map;
-
-    screenOffsetMult?: Phaser.Math.Vector2;
-
-    startNumChunks: number;
-
-    moveSpeed: number;
-
-    speedUp: {
-      timer?: Phaser.Time.TimerEvent;
-      byValue: number;
-      eachMillisec: number;
-    };
-
-    depth: number;
-  } = {
-      depth: 9,
-      screenOffsetMult: new Phaser.Math.Vector2(0, 1),
-      startNumChunks: 8,
-      moveSpeed: -1.0,
-
-      speedUp: {
-        byValue: 0.1,
-        eachMillisec: 100
-      }
-    };
-
-  private readonly reward: {
-    object?: Reward;
-    scoreHUD?: ScoreHUDExtended;
-    highScoreHUD?: ScoreHUD;
-
-    startNumCoins: number;
-    zeroPadding: number;
-
-    prevHighScore: number;
-
-    depth: number;
-  } & HUDFrameSettings = {
-      fontSize: 38,
-      textPadding: 30,
-      color: 0x000000,
-
-      startNumCoins: 5,
-      zeroPadding: 6,
-
-      prevHighScore: 0,
-
-      depth: this.map.depth
-    };
-
-  private readonly traffic: {
-    object?: Traffic;
-
-    player?: Vehicle;
-    playerStartOffset: Phaser.Math.Vector2;
-
-    depth: number;
-  } = {
-      playerStartOffset: new Phaser.Math.Vector2(50, 0),
-
-      depth: this.map.depth
-    };
-
-  private menuSettings: SettingsModel;
-
-  private cursors?: Phaser.Types.Input.Keyboard.CursorKeys;
-
-  private isGameOver: boolean = false;
+  private menuSettings: SettingsModel
+  private run!: LevelRunState
+  private onVisibilityChange?: () => void
 
   constructor() {
-    super({ key: 'SceneLevel' });
+    super({ key: 'SceneLevel' })
   }
 
   private init(data: SettingsModel): void {
-    this.menuSettings = data;
+    this.menuSettings = data
   }
 
   private create(): void {
-    // Scene instance is reused across runs; clear stale refs and handlers from prior play.
-    this.map.speedUp.timer = undefined;
-    Common.clearGameEvents(this);
-    this.city.tileSprite = undefined;
-    this.hill.tileSprite = undefined;
-    this.clouds.tileSprite = undefined;
-    this.nearForest.tileSprite = undefined;
-    this.farForest.tileSprite = undefined;
-    this.farthestForest.tileSprite = undefined;
-    this.map.object = undefined;
-    this.traffic.object = undefined;
-    this.traffic.player = undefined;
-    this.reward.object = undefined;
-    this.reward.scoreHUD = undefined;
-    this.reward.highScoreHUD = undefined;
-    this.teardownMobileControls();
-    this.gameOver.image = undefined;
-    this.gameOver.score = undefined;
-    this.gameOver.againButton = undefined;
-    this.gameOver.menuButton = undefined;
+    this.run = new LevelRunState()
+    Common.clearGameEvents(this)
+    this.teardownMobileControls()
 
-    this.prepareObjects();
-    new MuteButton(this);
-    AudioHelper.playBgm(this, sourceModel.soundBgm.mappingKey);
+    this.prepareObjects()
+    new MuteButton(this)
+    AudioHelper.playBgm(this, sourceModel.soundBgm.mappingKey)
 
-    this.cursors = this.input.keyboard?.createCursorKeys();
+    this.run.cursors = this.input.keyboard?.createCursorKeys()
+    if (this.input.keyboard) {
+      this.run.wasd = {
+        W: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.W),
+        A: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.A),
+        S: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.S),
+        D: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.D),
+      }
+    }
+
+    this.input.keyboard?.on('keydown-ESC', this.handlePauseKey, this)
+    this.input.keyboard?.on('keydown-P', this.handlePauseKey, this)
+
+    this.onVisibilityChange = () => {
+      if (document.hidden) {
+        this.pauseGame()
+      }
+    }
+    document.addEventListener('visibilitychange', this.onVisibilityChange)
 
     this.events.on(GameEvent.PLAYER_COLLIDED, (id: string) => {
-      this.handlePlayerCollided(id);
-    });
+      this.handlePlayerCollided(id)
+    })
 
-    this.events.once('shutdown', this.handleShutdown, this);
+    this.events.once('shutdown', this.handleShutdown, this)
   }
 
   private prepareObjects(): void {
-    this.isGameOver = false;
+    this.run.isGameOver = false
+    this.run.isPaused = false
 
-    this.prepareBackground();
-    this.prepareMap();
-    this.prepareTraffic();
-    this.prepareReward();
+    createBackgroundLayers(this, this.run.backgrounds)
+    this.run.map = prepareMap(
+      this,
+      this.run.map,
+      MAP_DEFAULTS.depth,
+      MAP_DEFAULTS.screenOffsetMult,
+      MAP_DEFAULTS.startNumChunks,
+    )
+    this.prepareTraffic()
+    this.prepareReward()
 
     if (this.menuSettings.deviceType === DeviceType.MOBILE) {
-      this.setupMobileControls();
+      this.setupMobileControls()
     }
 
-    this.traffic.player?.setEnableTurn(true);
+    this.run.player?.setEnableTurn(true)
+    this.run.map?.changeSpeed(SPEED_START)
 
-    this.map.object?.changeSpeed(this.map.moveSpeed);
-
-    // Start speeding up the map
-    this.map.speedUp.timer = this.time.addEvent({
-      delay: this.map.speedUp.eachMillisec,
+    this.run.speedUpTimer = this.time.addEvent({
+      delay: SPEED_RAMP_INTERVAL_MS,
       loop: true,
       callback: () => {
-        this.map.object?.changeSpeed(this.map.object.getSpeed() - this.map.speedUp.byValue);
-      }
-    });
+        if (!this.run.map || this.run.isPaused || this.run.isGameOver) return
+        this.run.map.changeSpeed(nextSpeed(this.run.map.getSpeed(), SPEED_RAMP_PER_TICK))
+      },
+    })
   }
 
-  public update(time: number, delta: number): void {
-    if (this.isGameOver) {
-      return;
+  public update(_time: number, delta: number): void {
+    if (this.run.isGameOver || this.run.isPaused) {
+      return
     }
 
-    if (this.cursors?.up?.isDown) {
-      this.traffic.player?.turnLeft();
-    }
-    else if (this.cursors?.down?.isDown) {
-      this.traffic.player?.turnRight();
+    const up =
+      this.run.cursors?.up?.isDown ||
+      this.run.cursors?.left?.isDown ||
+      this.run.wasd?.W.isDown ||
+      this.run.wasd?.A.isDown
+    const down =
+      this.run.cursors?.down?.isDown ||
+      this.run.cursors?.right?.isDown ||
+      this.run.wasd?.S.isDown ||
+      this.run.wasd?.D.isDown
+
+    if (up) {
+      this.run.player?.turnLeft()
+    } else if (down) {
+      this.run.player?.turnRight()
     }
 
-    const dt = Common.getFrameScale(delta);
+    const dt = Common.getFrameScale(delta)
 
-    this.city.tileSprite?.move(dt);
-    this.hill.tileSprite?.move(dt);
-    this.nearForest.tileSprite?.move(dt);
-    this.farForest.tileSprite?.move(dt);
-    this.clouds.tileSprite?.move(dt);
-    this.farthestForest.tileSprite?.move(dt);
-    this.map.object?.move(dt);
-    this.reward.object?.move(dt);
-    this.reward.object?.addDriveScore(delta);
-    this.traffic.object?.move(dt);
+    moveBackgroundLayers(this.run.backgrounds, dt)
+    this.run.map?.move(dt)
+    this.run.reward?.move(dt)
+    this.run.reward?.addDriveScore(Common.getFrameScale(delta) * (1000 / 60))
+    this.run.traffic?.move(dt)
   }
 
-  private handlePlayerCollided(id: string): void {
-    if (!this.isGameOver) {
-      this.isGameOver = true;
-
-      this.map.speedUp.timer?.remove(false);
-
-      this.map?.object?.stop(this.map?.speedUp.byValue);
-
-      this.traffic.player?.setEnableTurn(false);
-
-      const earnedPoints = this.reward.object?.getEarnedPoints() ?? 0;
-      ScoreStorage.saveHighScore(earnedPoints);
-      if (earnedPoints > this.reward.prevHighScore) {
-        this.reward.prevHighScore = earnedPoints;
-        this.reward.highScoreHUD?.updateScore(earnedPoints);
-      }
-
-      AudioHelper.stopBgm(this, sourceModel.soundBgm.mappingKey);
-
-      // Freeze the whole playfield: cars already stopped; coins must stop spinning too.
-      this.reward.object?.freeze();
-
-      this.game.events.emit('mobileControlsEnabled', false);
-
-      this.showGameOverOverlay(earnedPoints);
+  private handlePauseKey = (): void => {
+    if (this.run.isGameOver) return
+    if (this.run.isPaused) {
+      this.resumeGame()
+    } else {
+      this.pauseGame()
     }
+  }
+
+  private pauseGame(): void {
+    if (this.run.isPaused || this.run.isGameOver) return
+    this.run.isPaused = true
+    this.physics.pause()
+    this.tweens.pauseAll()
+    this.time.paused = true
+
+    const cx = this.cameras.main.width / 2
+    const cy = this.cameras.main.height / 2
+    const bg = this.add.rectangle(cx, cy, this.cameras.main.width, this.cameras.main.height, 0x000000, 0.55)
+    const text = this.add
+      .bitmapText(cx, cy, sourceModel.font.mappingKey, 'PAUSED\nESC / P TO RESUME', 42)
+      .setOrigin(0.5)
+      .setCenterAlign()
+    this.run.pauseOverlay = this.add.container(0, 0, [bg, text]).setDepth(LayerIDX.GUI + 20)
+  }
+
+  private resumeGame(): void {
+    if (!this.run.isPaused) return
+    this.run.isPaused = false
+    this.physics.resume()
+    this.tweens.resumeAll()
+    this.time.paused = false
+    this.run.pauseOverlay?.destroy(true)
+    this.run.pauseOverlay = undefined
+  }
+
+  private handlePlayerCollided(_id: string): void {
+    if (this.run.isGameOver) return
+    this.run.isGameOver = true
+    this.resumeGame()
+
+    this.run.speedUpTimer?.remove(false)
+    this.run.map?.stop(SPEED_RAMP_PER_TICK)
+    this.run.player?.setEnableTurn(false)
+
+    const earnedPoints = this.run.reward?.getEarnedPoints() ?? 0
+    ScoreStorage.saveHighScore(earnedPoints)
+    if (earnedPoints > this.run.prevHighScore) {
+      this.run.prevHighScore = earnedPoints
+      this.run.highScoreHUD?.updateScore(earnedPoints)
+    }
+
+    AudioHelper.stopBgm(this, sourceModel.soundBgm.mappingKey)
+    this.run.reward?.freeze()
+    this.game.events.emit('mobileControlsEnabled', false)
+    this.showGameOverOverlay(earnedPoints)
   }
 
   private handleShutdown(): void {
-    this.map.speedUp.timer?.remove(false);
-    Common.clearGameEvents(this);
-    this.teardownMobileControls();
+    this.run.speedUpTimer?.remove(false)
+    Common.clearGameEvents(this)
+    this.teardownMobileControls()
+    this.input.keyboard?.off('keydown-ESC', this.handlePauseKey, this)
+    this.input.keyboard?.off('keydown-P', this.handlePauseKey, this)
+    if (this.onVisibilityChange) {
+      document.removeEventListener('visibilitychange', this.onVisibilityChange)
+      this.onVisibilityChange = undefined
+    }
   }
 
-  /** Bottom lane bar via overlay — full FOV, left=up / right=down. */
   private setupMobileControls(): void {
-    // Always fully stop + relaunch so AGAIN gets a fresh enabled overlay
-    // (Phaser reuses the scene instance; wake alone left enabled=false).
-    this.teardownMobileControls();
+    this.teardownMobileControls()
 
-    this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
-    this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this);
-    this.game.events.on('mobileLaneUp', this.handleMobileLaneUp, this);
-    this.game.events.on('mobileLaneDown', this.handleMobileLaneDown, this);
+    this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this)
+    this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this)
+    this.game.events.on('mobileLaneUp', this.handleMobileLaneUp, this)
+    this.game.events.on('mobileLaneDown', this.handleMobileLaneDown, this)
 
-    this.scene.launch('MobileControls');
-    this.game.events.emit('mobileControlsEnabled', true);
+    this.scene.launch('MobileControls')
+    this.game.events.emit('mobileControlsEnabled', true)
   }
 
   private teardownMobileControls = (): void => {
-    this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this);
-    this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this);
-    this.game.events.emit('mobileControlsEnabled', false);
+    this.game.events.off('mobileLaneUp', this.handleMobileLaneUp, this)
+    this.game.events.off('mobileLaneDown', this.handleMobileLaneDown, this)
+    this.game.events.emit('mobileControlsEnabled', false)
 
     if (this.scene.isActive('MobileControls') || this.scene.isSleeping('MobileControls')) {
-      this.scene.stop('MobileControls');
+      this.scene.stop('MobileControls')
     }
-  };
+  }
 
   private handleMobileLaneUp = (): void => {
-    if (this.isGameOver) {
-      return;
-    }
-
-    this.traffic.player?.turnLeft();
-  };
+    if (this.run.isGameOver || this.run.isPaused) return
+    this.run.player?.turnLeft()
+  }
 
   private handleMobileLaneDown = (): void => {
-    if (this.isGameOver) {
-      return;
-    }
-
-    this.traffic.player?.turnRight();
-  };
+    if (this.run.isGameOver || this.run.isPaused) return
+    this.run.player?.turnRight()
+  }
 
   private showGameOverOverlay(earnedPoints: number): void {
-    const cx = this.cameras.main.width * this.gameOver.screenOffsetMult.x;
-    const cy = this.cameras.main.height * this.gameOver.screenOffsetMult.y;
+    const cx = this.cameras.main.width * this.gameOverLayout.screenOffsetMult.x
+    const cy = this.cameras.main.height * this.gameOverLayout.screenOffsetMult.y
 
-    this.gameOver.image = this.add.image(cx, cy, sourceModel.imageGameOver.mappingKey)
+    this.run.gameOverImage = this.add
+      .image(cx, cy, sourceModel.imageGameOver.mappingKey)
       .setOrigin(0.5, 0.5)
-      .setScale(this.gameOver.scale)
+      .setScale(this.gameOverLayout.scale)
       .setDepth(LayerIDX.GUI + 3)
-      .setAlpha(0);
+      .setAlpha(0)
 
-    this.gameOver.score = this.add.bitmapText(
-      cx,
-      cy + 52,
-      sourceModel.font.mappingKey,
-      `SCORE ${Common.fillZeroPadding(earnedPoints, 6)}`,
-      42
-    )
+    this.run.gameOverScore = this.add
+      .bitmapText(cx, cy + 52, sourceModel.font.mappingKey, `SCORE ${Common.fillZeroPadding(earnedPoints, 6)}`, 42)
       .setOrigin(0.5, 0)
       .setDepth(LayerIDX.GUI + 3)
-      .setAlpha(0);
+      .setAlpha(0)
 
-    // Matching pixel buttons: AGAIN (retry) + MENU (car select).
-    // Same hover language as START: yellow→red frame + slight scale-up.
-    const btnScale = 0.33;
-    const btnHoverScale = btnScale * 1.035; // subtle grow (shared with START)
-    const btnY = cy + 145;
-    const btnGap = 210;
+    const btnScale = 0.33
+    const btnHoverScale = btnScale * 1.035
+    const btnY = cy + 145
+    const btnGap = 210
 
-    this.gameOver.againButton = new BasicButton(
+    this.run.againButton = new BasicButton(
       this,
       new Phaser.Math.Vector2(cx - btnGap / 2, btnY),
       sourceModel.spriteAgain.mappingKey,
       LayerIDX.GUI + 3,
       btnScale,
       undefined,
-      sourceModel.soundButton.mappingKey
-    );
-    this.prepareGameOverButton(this.gameOver.againButton, btnScale);
+      sourceModel.soundButton.mappingKey,
+    )
+    this.prepareGameOverButton(this.run.againButton, btnScale)
 
-    this.gameOver.menuButton = new BasicButton(
+    this.run.menuButton = new BasicButton(
       this,
       new Phaser.Math.Vector2(cx + btnGap / 2, btnY),
       sourceModel.spriteMenu.mappingKey,
       LayerIDX.GUI + 3,
       btnScale,
       undefined,
-      sourceModel.soundButton.mappingKey
-    );
-    this.prepareGameOverButton(this.gameOver.menuButton, btnScale);
+      sourceModel.soundButton.mappingKey,
+    )
+    this.prepareGameOverButton(this.run.menuButton, btnScale)
 
     this.tweens.add({
-      targets: [
-        this.gameOver.image,
-        this.gameOver.score,
-        this.gameOver.againButton,
-        this.gameOver.menuButton
-      ],
+      targets: [this.run.gameOverImage, this.run.gameOverScore, this.run.againButton, this.run.menuButton],
       alpha: 1,
       duration: 220,
-      ease: 'Quad.easeOut'
-    });
+      ease: 'Quad.easeOut',
+    })
 
     this.time.delayedCall(280, () => {
-      this.wireGameOverButton(this.gameOver.againButton, btnScale, btnHoverScale, this.handleGameOverAgain);
-      this.wireGameOverButton(this.gameOver.menuButton, btnScale, btnHoverScale, this.handleGameOverMenu);
-    });
+      this.wireGameOverButton(this.run.againButton, btnScale, btnHoverScale, this.handleGameOverAgain)
+      this.wireGameOverButton(this.run.menuButton, btnScale, btnHoverScale, this.handleGameOverMenu)
+    })
+
+    this.input.keyboard?.once('keydown-ENTER', this.handleGameOverAgain, this)
+    this.input.keyboard?.once('keydown-SPACE', this.handleGameOverAgain, this)
+    this.input.keyboard?.once('keydown-ESC', this.handleGameOverMenu, this)
+    this.input.keyboard?.once('keydown-M', this.handleGameOverMenu, this)
   }
 
-  /** Origin + fixed hitbox so frame swaps cannot shift or reflow the button. */
   private prepareGameOverButton(button: BasicButton, btnScale: number): void {
-    button.setOrigin(0.5, 0.5);
-    button.setAlpha(0);
-    button.setFrame(0, false, false);
-    button.setOrigin(0.5, 0.5);
-    // Fixed hit area in local texture space — ignores per-frame content width
-    button.setInteractive(
-      new Phaser.Geom.Rectangle(0, 0, button.width, button.height),
-      Phaser.Geom.Rectangle.Contains
-    );
-    button.setScale(btnScale);
+    button.setOrigin(0.5, 0.5)
+    button.setAlpha(0)
+    button.setFrame(0, false, false)
+    button.setOrigin(0.5, 0.5)
+    button.setInteractive(new Phaser.Geom.Rectangle(0, 0, button.width, button.height), Phaser.Geom.Rectangle.Contains)
+    button.setScale(btnScale)
   }
 
   private wireGameOverButton(
     button: BasicButton | undefined,
     idleScale: number,
     hoverScale: number,
-    handler: () => void
+    handler: () => void,
   ): void {
-    if (!button) {
-      return;
-    }
+    if (!button) return
 
-    // Same as START: yellow idle → red hover + scale-up from center.
-    button.on('pointerdown', handler, this);
+    button.on('pointerdown', handler, this)
     button.on('pointerover', () => {
-      button.setFrame(1, false, false);
-      button.setOrigin(0.5, 0.5);
-      button.setScale(hoverScale);
-      button.playSound();
-    });
+      button.setFrame(1, false, false)
+      button.setOrigin(0.5, 0.5)
+      button.setScale(hoverScale)
+      button.playSound()
+    })
     button.on('pointerout', () => {
-      button.setFrame(0, false, false);
-      button.setOrigin(0.5, 0.5);
-      button.setScale(idleScale);
-    });
+      button.setFrame(0, false, false)
+      button.setOrigin(0.5, 0.5)
+      button.setScale(idleScale)
+    })
   }
 
-  private handleGameOverAgain(): void {
-    this.scene.start('PreloadLevel', this.menuSettings);
+  private handleGameOverAgain = (): void => {
+    this.scene.start('PreloadLevel', this.menuSettings)
   }
 
-  private handleGameOverMenu(): void {
-    this.scene.start('SceneMenu');
+  private handleGameOverMenu = (): void => {
+    this.scene.start('SceneMenu')
   }
-
-  //#region Prepares
 
   private prepareReward(): void {
-    const highScore = ScoreStorage.getHighScore();
-    this.reward.prevHighScore = highScore;
+    const highScore = ScoreStorage.getHighScore()
+    this.run.prevHighScore = highScore
 
-    if (this.reward.object) {
-      this.reward.object.generateReward(this.reward.startNumCoins);
-
-      if (this.traffic.player) {
-        this.reward.object.attachPlayer(this.traffic.player);
+    if (this.run.reward) {
+      this.run.reward.generateReward(this.rewardDefaults.startNumCoins)
+      if (this.run.player) {
+        this.run.reward.attachPlayer(this.run.player)
       }
-
-      this.reward.highScoreHUD?.updateScore(highScore);
-      return;
+      this.run.highScoreHUD?.updateScore(highScore)
+      return
     }
 
-    if (this.map.object && this.traffic.player) {
-      this.reward.object = new Reward(
+    if (this.run.map && this.run.player) {
+      this.run.reward = new Reward(
         this,
-        this.map.object,
-        this.traffic.player,
-        this.reward.depth,
-        this.reward.startNumCoins
-      );
+        this.run.map,
+        this.run.player,
+        this.rewardDefaults.depth,
+        this.rewardDefaults.startNumCoins,
+      )
     }
 
-    this.reward.scoreHUD = new ScoreHUDExtended(
+    this.run.scoreHUD = new ScoreHUDExtended(
       this,
       'SCORE',
       AppendFrom.LEFT,
-      this.reward.color,
-      this.reward.fontSize,
-      this.reward.textPadding,
-      this.reward.zeroPadding
-    );
+      this.rewardDefaults.color,
+      this.rewardDefaults.fontSize,
+      this.rewardDefaults.textPadding,
+      this.rewardDefaults.zeroPadding,
+    )
 
-    this.reward.highScoreHUD = new ScoreHUD(
+    this.run.highScoreHUD = new ScoreHUD(
       this,
       'HIGHEST SCORE',
       AppendFrom.RIGHT,
-      this.reward.color,
-      this.reward.fontSize,
-      this.reward.textPadding,
-      this.reward.zeroPadding
-    );
+      this.rewardDefaults.color,
+      this.rewardDefaults.fontSize,
+      this.rewardDefaults.textPadding,
+      this.rewardDefaults.zeroPadding,
+    )
 
-    this.reward.highScoreHUD.updateScore(highScore);
+    this.run.highScoreHUD.updateScore(highScore)
   }
 
   private prepareTraffic(): void {
-    if (this.traffic.object) {
-      this.traffic.object.generateTraffic();
+    if (!this.run.map) return
 
-      this.traffic.player = this.traffic.object.generateVehicle(
-        this.menuSettings.vehicle,
-        0,
-        this.traffic.playerStartOffset,
-        [],
-        false
-      );
+    this.run.traffic = prepareTraffic(this, this.run.map, TRAFFIC_DEFAULTS.depth, this.run.traffic)
+    this.run.traffic.generateTraffic()
 
-      this.traffic.object.attachPlayer(this.traffic.player);
+    this.run.player = this.run.traffic.generateVehicle(
+      this.menuSettings.vehicle,
+      0,
+      TRAFFIC_DEFAULTS.playerStartOffset,
+      [],
+      false,
+    )
 
-      return;
-    }
-
-    if (this.map.object) {
-      this.traffic.object = new Traffic(
-        this,
-        this.map.object,
-        this.traffic.depth
-      );
-
-      this.traffic.object?.generateTraffic();
-
-      this.traffic.player = this.traffic.object.generateVehicle(
-        this.menuSettings.vehicle,
-        0,
-        this.traffic.playerStartOffset,
-        [],
-        false
-      );
-
-      this.traffic.object.attachPlayer(this.traffic.player);
-    }
+    this.run.traffic.attachPlayer(this.run.player)
   }
-
-  private prepareMap(): void {
-    if (this.map.object) {
-      this.map.object.generateMap(this.map.startNumChunks);
-
-      return;
-    }
-
-    this.map.object = new Map(
-      this,
-      this.map.depth,
-      new Phaser.Math.Vector2(
-        this.cameras.main.width * (this.map.screenOffsetMult?.x ?? 1),
-        this.cameras.main.height * (this.map.screenOffsetMult?.y ?? 1)
-      ),
-      this.map.startNumChunks
-    );
-  }
-
-  private prepareBackground(): void {
-    if (!this.city.tileSprite) {
-      this.city.tileSprite =
-        new BackgroundTileSpriteExtended(
-          this,
-          this.city.mappingKey,
-          this.city.moveSpeed,
-          this.city.outerScale,
-          this.city.innerScale,
-          this.city.depth,
-          this.city.origin,
-          this.city.screenOffsetMult
-        );
-    }
-
-    if (!this.hill.tileSprite) {
-      this.hill.tileSprite =
-        new BackgroundTileSpriteExtended(
-          this,
-          this.hill.mappingKey,
-          this.hill.moveSpeed,
-          this.hill.outerScale,
-          this.hill.innerScale,
-          this.hill.depth,
-          this.hill.origin,
-          this.hill.screenOffsetMult
-        );
-    }
-
-    if (!this.clouds.tileSprite) {
-      this.clouds.tileSprite =
-        new BackgroundTileSpriteExtended(
-          this,
-          this.clouds.mappingKey,
-          this.clouds.moveSpeed,
-          this.clouds.outerScale,
-          this.clouds.innerScale,
-          this.clouds.depth,
-          this.clouds.origin,
-          this.clouds.screenOffsetMult
-        );
-    }
-
-    if (!this.nearForest.tileSprite) {
-      this.nearForest.tileSprite =
-        new BackgroundTileSpriteExtended(
-          this,
-          this.nearForest.mappingKey,
-          this.nearForest.moveSpeed,
-          this.nearForest.outerScale,
-          this.nearForest.innerScale,
-          this.nearForest.depth,
-          this.nearForest.origin,
-          this.nearForest.screenOffsetMult
-        );
-    }
-
-    if (!this.farForest.tileSprite) {
-      this.farForest.tileSprite =
-        new BackgroundTileSpriteExtended(
-          this,
-          this.farForest.mappingKey,
-          this.farForest.moveSpeed,
-          this.farForest.outerScale,
-          this.farForest.innerScale,
-          this.farForest.depth,
-          this.farForest.origin,
-          this.farForest.screenOffsetMult
-        );
-    }
-
-    if (!this.farthestForest.tileSprite) {
-      this.farthestForest.tileSprite =
-        new BackgroundTileSpriteExtended(
-          this,
-          this.farthestForest.mappingKey,
-          this.farthestForest.moveSpeed,
-          this.farthestForest.outerScale,
-          this.farthestForest.innerScale,
-          this.farthestForest.depth,
-          this.farthestForest.origin,
-          this.farthestForest.screenOffsetMult
-        );
-    }
-  }
-  //#endregion
 }

@@ -1,59 +1,33 @@
 import { sourceModel } from '../models/source'
+import { loadAtlas, loadAudio, loadBitmapFont, loadImage, loadSpritesheet } from '../objects/_common/assetLoader'
 
 export default class PreloadMenu extends Phaser.Scene {
-    constructor() {
-        super({ key: 'PreloadMenu' })
-    }
+  constructor() {
+    super({ key: 'PreloadMenu' })
+  }
 
-    private preload(): void {
-        this.load.bitmapFont(sourceModel.font.mappingKey, sourceModel.font.sourcePath, sourceModel.font.sourceMapperPath);
+  private preload(): void {
+    loadBitmapFont(this, sourceModel.font)
 
-        this.load.image(sourceModel.imageLogo.mappingKey, sourceModel.imageLogo.sourcePath);
-        this.load.image(sourceModel.imageCity.mappingKey, sourceModel.imageCity.sourcePath);
-        this.load.image(sourceModel.imageHill.mappingKey, sourceModel.imageHill.sourcePath);
-        this.load.image(sourceModel.imageForest.mappingKey, sourceModel.imageForest.sourcePath);
-        this.load.image(sourceModel.imageClouds.mappingKey, sourceModel.imageClouds.sourcePath);
+    loadImage(this, sourceModel.imageLogo)
+    loadImage(this, sourceModel.imageCity)
+    loadImage(this, sourceModel.imageHill)
+    loadImage(this, sourceModel.imageForest)
+    loadImage(this, sourceModel.imageClouds)
 
-        this.load.spritesheet(
-            sourceModel.spriteStart.mappingKey,
-            sourceModel.spriteStart.sourcePath,
-            {
-                frameWidth: 191,
-                frameHeight: 69
-            }
-        );
+    loadSpritesheet(this, sourceModel.spriteStart)
+    loadSpritesheet(this, sourceModel.spriteMute)
 
-        this.load.spritesheet(
-            sourceModel.spriteMute.mappingKey,
-            sourceModel.spriteMute.sourcePath,
-            {
-                frameWidth: 188,
-                frameHeight: 206
-            }
-        );
+    loadAudio(this, sourceModel.soundButton)
 
-        this.load.audio(sourceModel.soundButton.mappingKey, sourceModel.soundButton.sourcePath);
+    loadImage(this, sourceModel.imageRoadStraight0)
+    loadImage(this, sourceModel.imageRoadStraight1)
 
-        this.load.image(sourceModel.imageRoadStraight0.mappingKey, sourceModel.imageRoadStraight0.sourcePath);
-        this.load.image(sourceModel.imageRoadStraight1.mappingKey, sourceModel.imageRoadStraight1.sourcePath);
+    loadAtlas(this, sourceModel.atlasVehicle)
+    loadSpritesheet(this, sourceModel.spriteExplosion)
+  }
 
-        this.load.atlas(
-            sourceModel.atlasVehicle.mappingKey,
-            sourceModel.atlasVehicle.sourcePath,
-            sourceModel.atlasVehicle.sourceMapperPath
-        );
-
-        this.load.spritesheet(
-            sourceModel.spriteExplosion.mappingKey,
-            sourceModel.spriteExplosion.sourcePath,
-            {
-                frameWidth: 17,
-                frameHeight: 17
-            }
-        );
-    }
-
-    private create(): void {
-        this.scene.start('SceneMenu');
-    }
+  private create(): void {
+    this.scene.start('SceneMenu')
+  }
 }
