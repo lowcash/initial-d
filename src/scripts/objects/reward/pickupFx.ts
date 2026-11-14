@@ -1,39 +1,36 @@
 import { LayerIDX } from '../_common/common'
+import { prefersReducedMotion } from '../_common/motion'
 import { sourceModel } from '../../models/source'
 
 /**
  * Coin pickup juice — sparks + "+N" share one short timeline so they read as one beat.
  */
 export default class PickupFx {
-  static readonly DURATION_MS = 420;
+  static readonly DURATION_MS = 420
 
   static play(scene: Phaser.Scene, x: number, y: number, points: number): void {
-    const depth = LayerIDX.GUI + 4;
+    const depth = LayerIDX.GUI + 4
+    const reduced = prefersReducedMotion()
 
-    const label = scene.add.bitmapText(
-      x,
-      y,
-      sourceModel.font.mappingKey,
-      `+${points}`,
-      30
-    )
+    const label = scene.add
+      .bitmapText(x, y, sourceModel.font.mappingKey, `+${points}`, 30)
       .setOrigin(0.5, 0.5)
       .setDepth(depth)
       .setTint(0xffe066)
       .setScale(0.7)
-      .setAlpha(0);
+      .setAlpha(0)
 
-    const ring = scene.add.circle(x, y, 6, 0xffe066, 0.4)
+    const ring = scene.add
+      .circle(x, y, 6, 0xffe066, 0.4)
       .setStrokeStyle(2, 0xffffff, 0.85)
       .setDepth(depth - 1)
-      .setScale(0.4);
+      .setScale(0.4)
 
-    const sparks: Phaser.GameObjects.Rectangle[] = [];
-    const colors = [0xffe066, 0xffcc33, 0xffffff, 0xff9933];
-    for (let i = 0; i < 8; i++) {
-      sparks.push(
-        scene.add.rectangle(x, y, 3, 3, colors[i % colors.length]).setDepth(depth)
-      );
+    const sparks: Phaser.GameObjects.Rectangle[] = []
+    const colors = [0xffe066, 0xffcc33, 0xffffff, 0xff9933]
+    const sparkCount = reduced ? 0 : 8
+    for (let i = 0; i < sparkCount; i++) {
+      sparks.push(scene.add.rectangle(x, y, 3, 3, colors[i % colors.length]).setDepth(depth))
     }
 
     // One shared "pop" beat for label + ring.
@@ -52,10 +49,10 @@ export default class PickupFx {
           scale: 1.05,
           duration: PickupFx.DURATION_MS * 0.55,
           ease: 'Quad.easeIn',
-          onComplete: () => label.destroy()
-        });
-      }
-    });
+          onComplete: () => label.destroy(),
+        })
+      },
+    })
 
     scene.tweens.add({
       targets: ring,
@@ -63,12 +60,12 @@ export default class PickupFx {
       alpha: 0,
       duration: PickupFx.DURATION_MS,
       ease: 'Quad.easeOut',
-      onComplete: () => ring.destroy()
-    });
+      onComplete: () => ring.destroy(),
+    })
 
     sparks.forEach((spark, i) => {
-      const angle = (Math.PI * 2 * i) / sparks.length;
-      const dist = 22 + (i % 3) * 6;
+      const angle = (Math.PI * 2 * i) / sparks.length
+      const dist = 22 + (i % 3) * 6
       scene.tweens.add({
         targets: spark,
         x: x + Math.cos(angle) * dist,
@@ -77,8 +74,8 @@ export default class PickupFx {
         scale: 0.3,
         duration: PickupFx.DURATION_MS,
         ease: 'Quad.easeOut',
-        onComplete: () => spark.destroy()
-      });
-    });
+        onComplete: () => spark.destroy(),
+      })
+    })
   }
 }

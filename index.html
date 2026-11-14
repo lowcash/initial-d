@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
+    <meta http-equiv="X-UA-Compatible" content="ie=edge" />
+
+    <meta name="theme-color" content="#000000" />
+
+    <link rel="manifest" href="%BASE_URL%manifest.json" />
+
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="InitialD" />
+    <meta name="apple-mobile-web-app-title" content="InitialD" />
+    <meta name="msapplication-starturl" content="./" />
+
+    <link rel="icon" type="image/png" sizes="192x192" href="%BASE_URL%icons/icons-192.png" />
+    <link rel="icon" type="image/png" sizes="512x512" href="%BASE_URL%icons/icons-512.png" />
+    <link rel="apple-touch-icon" href="%BASE_URL%icons/apple-touch-icon.png" />
+    <link rel="shortcut icon" href="%BASE_URL%favicon.ico" type="image/x-icon" />
+
+    <title>InitialD</title>
+    <!-- Built using phaser-project-template (https://github.com/yandeu/phaser-project-template) MIT -->
+    <!-- BGM: Fever Stadium Climax BPM180 (CC0) by MintoDog — https://opengameart.org/content/fever-stadium -->
+    <!-- No service worker: see PWA.md (dead Workbox/SW removed in Wave 2). -->
+    <style>
+      html,
+      body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #000000;
+        position: fixed;
+        inset: 0;
+        touch-action: none;
+        -webkit-user-select: none;
+        user-select: none;
+      }
+
+      #initial-d-game {
+        position: absolute;
+        top: env(safe-area-inset-top, 0px);
+        right: env(safe-area-inset-right, 0px);
+        bottom: env(safe-area-inset-bottom, 0px);
+        left: env(safe-area-inset-left, 0px);
+        width: auto;
+        height: auto;
+      }
+
+      #initial-d-game canvas {
+        display: block;
+        margin: 0 auto;
+      }
+    </style>
+  </head>
+  <body>
+    <noscript>Please enable javascript to continue using this application.</noscript>
+    <div id="initial-d-game"></div>
+    <script type="module" src="/src/scripts/game.ts"></script>
+  </body>
+</html>

@@ -1,174 +1,194 @@
-import ICollidable from '../interfaces/ICollidable';
-import { GameEvent } from '../_common/common';
+import ICollidable from '../interfaces/ICollidable'
+import { GameEvent } from '../_common/common'
 
 export default class Coin implements ICollidable {
-    private readonly scene: Phaser.Scene;
+  private readonly scene: Phaser.Scene
 
-    private readonly id: string;
+  private readonly id: string
 
-    private readonly sprite: Phaser.Physics.Arcade.Sprite;
+  private readonly sprite: Phaser.Physics.Arcade.Sprite
 
-    private readonly gridPos: Phaser.Math.Vector2;
+  private readonly gridPos: Phaser.Math.Vector2
 
-    private readonly rewardPoints: number;
+  private readonly rewardPoints: number
 
-    private isAlive: boolean = true;
-    private isCollecting: boolean = false;
+  private isAlive: boolean = true
+  private isCollecting: boolean = false
 
-    private readonly checkEvent?: Phaser.Time.TimerEvent;
+  private readonly colliders: Phaser.Physics.Arcade.Collider[] = []
 
-    constructor(scene: Phaser.Scene, id: string, sprite: Phaser.Physics.Arcade.Sprite, gridPos: Phaser.Math.Vector2, collideWith: Array<Phaser.Physics.Arcade.Sprite> = [], rewardPoints: number = 200) {
-        this.scene = scene;
+  private readonly checkEvent?: Phaser.Time.TimerEvent
 
-        this.id = id;
-        this.sprite = sprite;
+  constructor(
+    scene: Phaser.Scene,
+    id: string,
+    sprite: Phaser.Physics.Arcade.Sprite,
+    gridPos: Phaser.Math.Vector2,
+    collideWith: Array<Phaser.Physics.Arcade.Sprite> = [],
+    rewardPoints: number = 200,
+  ) {
+    this.scene = scene
 
-        this.gridPos = gridPos;
+    this.id = id
+    this.sprite = sprite
 
-        this.rewardPoints = rewardPoints;
+    this.gridPos = gridPos
 
-        for (const c of collideWith) {
-            this.registerCollision(c);
-        }
+    this.rewardPoints = rewardPoints
 
-        // Phaser timer (not async while) so clear/restart can stop cleanly.
-        this.checkEvent = this.scene.time.addEvent({
-            delay: 60,
-            loop: true,
-            callback: this.checkOffscreen,
-            callbackScope: this
-        });
+    for (const c of collideWith) {
+      this.registerCollision(c)
     }
 
-    public registerCollision(collideWith: Phaser.Physics.Arcade.Sprite): void {
-        this.scene.physics.add.overlap(this.sprite, collideWith, () => {
-            if (!this.isAlive || this.isCollecting) {
-                return;
-            }
+    // Phaser timer (not async while) so clear/restart can stop cleanly.
+    this.checkEvent = this.scene.time.addEvent({
+      delay: 60,
+      loop: true,
+      callback: this.checkOffscreen,
+      callbackScope: this,
+    })
+  }
 
-            this.scene.events.emit(GameEvent.COIN_COLLIDED, this.id);
-        });
+  public registerCollision(collideWith: Phaser.Physics.Arcade.Sprite): void {
+    const collider = this.scene.physics.add.overlap(this.sprite, collideWith, () => {
+      if (!this.isAlive || this.isCollecting) {
+        return
+      }
+
+      this.scene.events.emit(GameEvent.COIN_COLLIDED, this.id)
+    })
+    this.colliders.push(collider)
+  }
+
+  /** Atomic claim to prevent double-scoring from multi-overlap. */
+  public tryBeginCollect(): boolean {
+    if (!this.isAlive || this.isCollecting) {
+      return false
     }
 
-    /** Atomic claim to prevent double-scoring from multi-overlap. */
-    public tryBeginCollect(): boolean {
-        if (!this.isAlive || this.isCollecting) {
-            return false;
-        }
+    this.isCollecting = true
+    return true
+  }
 
-        this.isCollecting = true;
-        return true;
+  public getPosition(): Phaser.Math.Vector2 {
+    return new Phaser.Math.Vector2(this.sprite.x, this.sprite.y)
+  }
+
+  public getSprite(): Phaser.Physics.Arcade.Sprite {
+    return this.sprite
+  }
+
+  public destroyCoin(): void {
+    if (!this.isAlive) {
+      return
     }
 
-    public getPosition(): Phaser.Math.Vector2 {
-        return new Phaser.Math.Vector2(this.sprite.x, this.sprite.y);
+    this.isAlive = false
+    this.stopWatching()
+    this.destroyColliders()
+
+    if (this.sprite && this.sprite.active) {
+      this.sprite.destroy()
     }
 
-    public getSprite(): Phaser.Physics.Arcade.Sprite {
-        return this.sprite;
+    if (!this.isCollecting) {
+      this.scene.events.emit(GameEvent.COIN_DESTROYED, this.id)
+    }
+  }
+
+  /** Hard stop used by clear/restart — no destroy event, no tweens left running. */
+  public dispose(): void {
+    this.isAlive = false
+    this.isCollecting = true
+    this.stopWatching()
+    this.destroyColliders()
+
+    if (this.sprite && this.sprite.active) {
+      this.scene.tweens.killTweensOf(this.sprite)
+      this.sprite.destroy()
+    }
+  }
+
+  private destroyColliders(): void {
+    for (const collider of this.colliders) {
+      collider.destroy()
+    }
+    this.colliders.length = 0
+  }
+
+  /**
+   * Keep scrolling with the road (pass through the car) while fading out.
+   * `scrollSpeed` is the same per-frame delta Reward.move() uses via incX.
+   * Call only after tryBeginCollect().
+   */
+  public collectWithMotion(durationMs: number, scrollSpeed: number, onDone?: () => void): void {
+    if (!this.isCollecting) {
+      return
     }
 
-    public destroyCoin(): void {
-        if (!this.isAlive) {
-            return;
-        }
+    this.isAlive = false
+    this.stopWatching()
+    this.destroyColliders()
 
-        this.isAlive = false;
-        this.stopWatching();
+    if (this.sprite.body) {
+      this.scene.physics.world.disable(this.sprite)
+    }
 
+    // Approximate remaining scroll over the FX window (~60fps ticks).
+    const travelX = scrollSpeed * (durationMs / (1000 / 60))
+
+    this.scene.tweens.add({
+      targets: this.sprite,
+      x: this.sprite.x + travelX,
+      scale: this.sprite.scale * 1.2,
+      alpha: 0,
+      duration: durationMs,
+      ease: 'Linear',
+      onComplete: () => {
         if (this.sprite && this.sprite.active) {
-            this.sprite.destroy();
+          this.sprite.destroy()
         }
 
-        if (!this.isCollecting) {
-            this.scene.events.emit(GameEvent.COIN_DESTROYED, this.id);
+        // Scene may already have restarted (AGAIN) before tween finished.
+        if (!this.scene.sys.isActive()) {
+          return
         }
+
+        if (onDone) {
+          onDone()
+        }
+      },
+    })
+  }
+
+  public getLane(): number {
+    return this.gridPos.y
+  }
+
+  public getRewardPoints(): number {
+    return this.rewardPoints
+  }
+
+  private checkOffscreen(): void {
+    if (!this.isAlive || this.isCollecting) {
+      this.stopWatching()
+      return
     }
 
-    /** Hard stop used by clear/restart — no destroy event, no tweens left running. */
-    public dispose(): void {
-        this.isAlive = false;
-        this.isCollecting = true;
-        this.stopWatching();
-
-        if (this.sprite && this.sprite.active) {
-            this.scene.tweens.killTweensOf(this.sprite);
-            this.sprite.destroy();
-        }
+    if (!this.sprite || !this.sprite.active) {
+      this.isAlive = false
+      this.stopWatching()
+      return
     }
 
-    /**
-     * Keep scrolling with the road (pass through the car) while fading out.
-     * `scrollSpeed` is the same per-frame delta Reward.move() uses via incX.
-     * Call only after tryBeginCollect().
-     */
-    public collectWithMotion(durationMs: number, scrollSpeed: number, onDone?: () => void): void {
-        if (!this.isCollecting) {
-            return;
-        }
-
-        this.isAlive = false;
-        this.stopWatching();
-
-        if (this.sprite.body) {
-            this.scene.physics.world.disable(this.sprite);
-        }
-
-        // Approximate remaining scroll over the FX window (~60fps ticks).
-        const travelX = scrollSpeed * (durationMs / (1000 / 60));
-
-        this.scene.tweens.add({
-            targets: this.sprite,
-            x: this.sprite.x + travelX,
-            scale: this.sprite.scale * 1.2,
-            alpha: 0,
-            duration: durationMs,
-            ease: 'Linear',
-            onComplete: () => {
-                if (this.sprite && this.sprite.active) {
-                    this.sprite.destroy();
-                }
-
-                // Scene may already have restarted (AGAIN) before tween finished.
-                if (!this.scene.sys.isActive()) {
-                    return;
-                }
-
-                if (onDone) {
-                    onDone();
-                }
-            }
-        });
+    if (this.sprite.x < -this.sprite.width) {
+      this.destroyCoin()
     }
+  }
 
-    public getLane(): number {
-        return this.gridPos.y;
+  private stopWatching(): void {
+    if (this.checkEvent) {
+      this.checkEvent.remove(false)
     }
-
-    public getRewardPoints(): number {
-        return this.rewardPoints;
-    }
-
-    private checkOffscreen(): void {
-        if (!this.isAlive || this.isCollecting) {
-            this.stopWatching();
-            return;
-        }
-
-        if (!this.sprite || !this.sprite.active) {
-            this.isAlive = false;
-            this.stopWatching();
-            return;
-        }
-
-        if (this.sprite.x < -this.sprite.width) {
-            this.destroyCoin();
-        }
-    }
-
-    private stopWatching(): void {
-        if (this.checkEvent) {
-            this.checkEvent.remove(false);
-        }
-    }
-};
+  }
+}

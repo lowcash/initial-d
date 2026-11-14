@@ -1,59 +1,68 @@
 import IMovable from '../interfaces/IMovable'
-import { Mapping } from '../_common/mappingHelper';
+import { Mapping } from '../_common/mappingHelper'
 
 export interface BackgroundTileSpriteMapping extends Mapping {
-    tileSprite?: BackgroundTileSprite;
+  tileSprite?: BackgroundTileSprite
 
-    screenOffsetMult?: Phaser.Math.Vector2;
-    
-    origin?: Phaser.Math.Vector2;
-    outerScale?: number;
-    innerScale?: number;
+  screenOffsetMult?: Phaser.Math.Vector2
 
-    moveSpeed: number;
+  origin?: Phaser.Math.Vector2
+  outerScale?: number
+  innerScale?: number
 
-    depth?: number;
-};
+  moveSpeed: number
+
+  depth?: number
+}
 
 export default class BackgroundTileSprite extends Phaser.GameObjects.TileSprite implements IMovable {
-    public speed: number;
+  public speed: number
 
-    constructor(scene: Phaser.Scene, mappingKey: string, speed: number, outerScale?: number, innerScale?: number, depth?: number, origin?: Phaser.Math.Vector2, screenOffsetMult?: Phaser.Math.Vector2) {
-        super(
-            scene, 
-            scene.cameras.main.width * (screenOffsetMult?.x ?? (origin?.x ?? .5)), 
-            scene.cameras.main.height * (screenOffsetMult?.y ?? (origin?.y ?? .5)),
-            0,
-            0,
-            mappingKey
-        );
+  constructor(
+    scene: Phaser.Scene,
+    mappingKey: string,
+    speed: number,
+    outerScale?: number,
+    innerScale?: number,
+    depth?: number,
+    origin?: Phaser.Math.Vector2,
+    screenOffsetMult?: Phaser.Math.Vector2,
+  ) {
+    super(
+      scene,
+      scene.cameras.main.width * (screenOffsetMult?.x ?? origin?.x ?? 0.5),
+      scene.cameras.main.height * (screenOffsetMult?.y ?? origin?.y ?? 0.5),
+      0,
+      0,
+      mappingKey,
+    )
 
-        this.speed = speed;
-        
-        if (origin) {
-            this.setOrigin(origin.x, origin.y);
-        }
+    this.speed = speed
 
-        if (outerScale) {
-            this.setScale(outerScale);
-        }
+    if (origin) {
+      this.setOrigin(origin.x, origin.y)
+    }
 
-        if (innerScale) {
-            this.setTileScale(innerScale);
-        }
+    if (outerScale) {
+      this.setScale(outerScale)
+    }
 
-        if (depth) {
-            this.setDepth(depth);
-        }
+    if (innerScale) {
+      this.setTileScale(innerScale)
+    }
 
-        scene.add.existing(this);
-     }
+    if (depth) {
+      this.setDepth(depth)
+    }
 
-     public setSpeed(speed: number): void {
-         this.speed = speed;
-     }
-
-     public move(dt: number = 1): void {
-         this.tilePositionX += this.speed * dt;
-     }
+    scene.add.existing(this)
   }
+
+  public setSpeed(speed: number): void {
+    this.speed = speed
+  }
+
+  public move(dt: number = 1): void {
+    this.tilePositionX += this.speed * dt
+  }
+}

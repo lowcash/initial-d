@@ -6,49 +6,49 @@ import ScaleHelper from './scaleHelper'
  * (PWA, manifest display:fullscreen) is the real fullscreen path there.
  */
 export default class FullscreenHelper {
-  private static armed = false;
+  private static armed = false
 
   static armOnFirstGesture(game?: Phaser.Game): void {
     if (FullscreenHelper.armed) {
-      return;
+      return
     }
 
-    FullscreenHelper.armed = true;
+    FullscreenHelper.armed = true
 
     const once = (): void => {
-      document.removeEventListener('pointerdown', once);
-      document.removeEventListener('touchend', once);
-      FullscreenHelper.request(game);
-    };
+      document.removeEventListener('pointerdown', once)
+      document.removeEventListener('touchend', once)
+      FullscreenHelper.request(game)
+    }
 
-    document.addEventListener('pointerdown', once, { passive: true });
-    document.addEventListener('touchend', once, { passive: true });
+    document.addEventListener('pointerdown', once, { passive: true })
+    document.addEventListener('touchend', once, { passive: true })
   }
 
   static request(game?: Phaser.Game): void {
     const el = document.documentElement as HTMLElement & {
-      webkitRequestFullscreen?: () => Promise<void> | void;
-    };
+      webkitRequestFullscreen?: () => Promise<void> | void
+    }
 
-    const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el);
+    const req = el.requestFullscreen?.bind(el) ?? el.webkitRequestFullscreen?.bind(el)
     if (!req) {
-      return;
+      return
     }
 
     const after = (): void => {
       if (game) {
-        ScaleHelper.refresh(game);
-        window.setTimeout(() => ScaleHelper.refresh(game), 100);
-        window.setTimeout(() => ScaleHelper.refresh(game), 400);
+        ScaleHelper.refresh(game)
+        window.setTimeout(() => ScaleHelper.refresh(game), 100)
+        window.setTimeout(() => ScaleHelper.refresh(game), 400)
       }
-    };
+    }
 
     try {
-      const result = req();
+      const result = req()
       if (result && typeof (result as Promise<void>).then === 'function') {
-        (result as Promise<void>).then(after).catch(() => undefined);
+        ;(result as Promise<void>).then(after).catch(() => undefined)
       } else {
-        after();
+        after()
       }
     } catch {
       // Ignore — browser may reject without a trusted gesture or on iOS.
